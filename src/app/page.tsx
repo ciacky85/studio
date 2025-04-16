@@ -22,6 +22,8 @@ export default function Home() {
       setRole('professor');
     } else if (username === 'student' && password === 'student') {
       setRole('student');
+    } else if (username === 'carlo.checchi@gmail.com' && password === '8257619t') {
+      setRole('admin');
     } else {
       alert('Invalid credentials');
     }
@@ -77,3 +79,4 @@ export default function Home() {
     </main>
   );
 }
+
