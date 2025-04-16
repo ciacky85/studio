@@ -106,7 +106,7 @@ export function AdminInterface() {
                                 {professor}
                               </SelectItem>
                             ))}
-                            <SelectItem value="">Unassigned</SelectItem>
+                            <SelectItem value="unassigned">Unassigned</SelectItem>
                           </SelectContent>
                         </Select>
                       </TableCell>
