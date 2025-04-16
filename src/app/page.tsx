@@ -7,6 +7,7 @@ import {StudentInterface} from '@/components/student/student-interface';
 import {Button} from '@/components/ui/button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
 import {Input} from '@/components/ui/input';
+import Link from 'next/link';
 
 export default function Home() {
   const [role, setRole] = useState<'admin' | 'professor' | 'student' | null>(null);
@@ -61,6 +62,9 @@ export default function Home() {
                 />
               </div>
               <Button onClick={handleLogin}>Login</Button>
+              <Link href="/register">
+                <Button variant="outline">Register</Button>
+              </Link>
             </CardContent>
           </Card>
         );
@@ -73,4 +77,3 @@ export default function Home() {
     </main>
   );
 }
-

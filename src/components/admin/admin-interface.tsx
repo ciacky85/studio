@@ -1,16 +1,16 @@
 'use client';
 
-import {useState} from 'react';
+import {useState, useEffect} from 'react';
 import {Button} from '@/components/ui/button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
-import {Input} from '@/components/ui/input';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select';
 import {Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
+import {sendEmail} from '@/services/email'; // Import the email service
 
 export function AdminInterface() {
   const [pendingRegistrations, setPendingRegistrations] = useState([
-    {id: 1, name: 'John Doe', role: 'student'},
-    {id: 2, name: 'Jane Smith', role: 'professor'},
+    {id: 1, name: 'John Doe', role: 'student', email: 'john.doe@example.com'},
+    {id: 2, name: 'Jane Smith', role: 'professor', email: 'jane.smith@example.com'},
   ]);
   const [classrooms, setClassrooms] = useState([
     {id: 1, name: 'Room 101', availability: 'Mon 8:00-10:00, Tue 14:00-16:00'},
@@ -28,10 +28,34 @@ export function AdminInterface() {
   // State to hold the schedule (classroom, day, time, professor)
   const [schedule, setSchedule] = useState({});
 
-  const approveRegistration = (id: number) => {
-    setPendingRegistrations(pendingRegistrations.filter((reg) => reg.id !== id));
+  const approveRegistration = async (id: number) => {
+    const registration = pendingRegistrations.find((reg) => reg.id === id);
+    if (registration) {
+      // Send approval email
+      await sendEmail({
+        to: registration.email,
+        subject: 'Registration Approved',
+        html: '<p>Your registration has been approved. You can now log in.</p>',
+      });
+
+      // Remove from pending registrations
+      setPendingRegistrations(pendingRegistrations.filter((reg) => reg.id !== id));
+    }
   };
 
+  const rejectRegistration = async (id: number) => {
+    const registration = pendingRegistrations.find((reg) => reg.id === id);
+    if (registration) {
+      // Send rejection email
+      await sendEmail({
+        to: registration.email,
+        subject: 'Registration Rejected',
+        html: '<p>Your registration has been rejected.</p>',
+      });
+      // Remove from pending registrations
+      setPendingRegistrations(pendingRegistrations.filter((reg) => reg.id !== id));
+    }
+  };
   // Function to generate time slots
   function generateTimeSlots() {
     const slots = [];
@@ -62,6 +86,7 @@ export function AdminInterface() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Email</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -70,8 +95,10 @@ export function AdminInterface() {
                   <TableRow key={reg.id}>
                     <TableCell>{reg.name}</TableCell>
                     <TableCell>{reg.role}</TableCell>
+                    <TableCell>{reg.email}</TableCell>
                     <TableCell>
                       <Button onClick={() => approveRegistration(reg.id)}>Approve</Button>
+                      <Button onClick={() => rejectRegistration(reg.id)} variant="destructive">Reject</Button>
                     </TableCell>
                   </TableRow>
                 ))}
