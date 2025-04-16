@@ -11,6 +11,7 @@ export function AdminInterface() {
   const [pendingRegistrations, setPendingRegistrations] = useState([
     {id: 1, name: 'John Doe', role: 'student', email: 'john.doe@example.com'},
     {id: 2, name: 'Jane Smith', role: 'professor', email: 'jane.smith@example.com'},
+    {id: 3, name: 'Test User', role: 'student', email: 'test@example.com'}, // Added test registration
   ]);
   const [classrooms, setClassrooms] = useState([
     {id: 1, name: 'Room 101', availability: 'Mon 8:00-10:00, Tue 14:00-16:00'},
