@@ -20,15 +20,15 @@ export default function Register() {
   const handleRegister = async () => {
     setRegistrationStatus('pending');
     try {
+      if (!email || !password || !role) {
+        throw new Error('Please fill in all fields.');
+      }
+
       // Simulate registration processing (e.g., Firebase auth, Firestore update)
       // await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate network request
 
       // Simulate success
       console.log('Registering user:', {email, password, role});
-
-      if (!email || !password || !role) {
-        throw new Error('Please fill in all fields.');
-      }
 
       // Send notification email to the admin (replace with actual admin email)
       await sendEmail({
@@ -91,7 +91,7 @@ export default function Register() {
           <div className="grid gap-2">
             <label htmlFor="role">Role</label>
             <Select
-              onValueChange={(value) => setRole(value as 'student' | 'professor')}
+              onValueChange={(value) => setRole(value as 'student' | 'professor' | '')}
               disabled={registrationStatus === 'pending'}
             >
               <SelectTrigger>
