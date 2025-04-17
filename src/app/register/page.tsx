@@ -26,6 +26,10 @@ export default function Register() {
       // Simulate success
       console.log('Registering user:', {email, password, role});
 
+      if (!email || !password || !role) {
+        throw new Error('Please fill in all fields.');
+      }
+
       // Send notification email to the admin (replace with actual admin email)
       await sendEmail({
         to: 'carlo.checchi@gmail.com',
