@@ -6,13 +6,17 @@ import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/compo
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select';
 import {Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 import {sendEmail} from '@/services/email'; // Import the email service
+import {useToast} from "@/hooks/use-toast";
+
+// Mocked pending registrations (replace with actual data source)
+const mockedPendingRegistrations = [
+  {id: 1, name: 'John Doe', role: 'student', email: 'john.doe@example.com'},
+  {id: 2, name: 'Jane Smith', role: 'professor', email: 'jane.smith@example.com'},
+  {id: 3, name: 'Test User', role: 'student', email: 'test@example.com'},
+];
 
 export function AdminInterface() {
-  const [pendingRegistrations, setPendingRegistrations] = useState([
-    {id: 1, name: 'John Doe', role: 'student', email: 'john.doe@example.com'},
-    {id: 2, name: 'Jane Smith', role: 'professor', email: 'jane.smith@example.com'},
-    {id: 3, name: 'Test User', role: 'student', email: 'test@example.com'}, // Added test registration
-  ]);
+  const [pendingRegistrations, setPendingRegistrations] = useState(mockedPendingRegistrations);
   const [classrooms, setClassrooms] = useState([
     {id: 1, name: 'Room 101', availability: 'Mon 8:00-10:00, Tue 14:00-16:00'},
     {id: 2, name: 'Room 102', availability: 'Wed 9:00-11:00, Fri 13:00-15:00'},
@@ -28,33 +32,61 @@ export function AdminInterface() {
 
   // State to hold the schedule (classroom, day, time, professor)
   const [schedule, setSchedule] = useState({});
+  const {toast} = useToast();
 
   const approveRegistration = async (id: number) => {
     const registration = pendingRegistrations.find((reg) => reg.id === id);
     if (registration) {
-      // Send approval email
-      await sendEmail({
-        to: registration.email,
-        subject: 'Registration Approved',
-        html: '<p>Your registration has been approved. You can now log in.</p>',
-      });
+      try {
+        // Send approval email
+        await sendEmail({
+          to: registration.email,
+          subject: 'Registration Approved',
+          html: '<p>Your registration has been approved. You can now log in.</p>',
+        });
 
-      // Remove from pending registrations
-      setPendingRegistrations(pendingRegistrations.filter((reg) => reg.id !== id));
+        // Remove from pending registrations
+        setPendingRegistrations(pendingRegistrations.filter((reg) => reg.id !== id));
+
+        toast({
+          title: "Registration Approved",
+          description: `Registration for ${registration.email} has been approved.`,
+        });
+      } catch (error) {
+        console.error("Error sending approval email:", error);
+        toast({
+          variant: "destructive",
+          title: "Error Approving Registration",
+          description: `Failed to send approval email to ${registration.email}.`,
+        });
+      }
     }
   };
 
   const rejectRegistration = async (id: number) => {
     const registration = pendingRegistrations.find((reg) => reg.id === id);
     if (registration) {
-      // Send rejection email
-      await sendEmail({
-        to: registration.email,
-        subject: 'Registration Rejected',
-        html: '<p>Your registration has been rejected.</p>',
-      });
-      // Remove from pending registrations
-      setPendingRegistrations(pendingRegistrations.filter((reg) => reg.id !== id));
+      try {
+        // Send rejection email
+        await sendEmail({
+          to: registration.email,
+          subject: 'Registration Rejected',
+          html: '<p>Your registration has been rejected.</p>',
+        });
+        // Remove from pending registrations
+        setPendingRegistrations(pendingRegistrations.filter((reg) => reg.id !== id));
+        toast({
+          title: "Registration Rejected",
+          description: `Registration for ${registration.email} has been rejected.`,
+        });
+      } catch (error) {
+        console.error("Error sending rejection email:", error);
+        toast({
+          variant: "destructive",
+          title: "Error Rejecting Registration",
+          description: `Failed to send rejection email to ${registration.email}.`,
+        });
+      }
     }
   };
   // Function to generate time slots

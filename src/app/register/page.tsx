@@ -6,24 +6,53 @@ import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/compo
 import {Input} from '@/components/ui/input';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select';
 import {useRouter} from 'next/navigation';
+import {sendEmail} from '@/services/email'; // Import the email service
+import {useToast} from "@/hooks/use-toast";
 
 export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'student' | 'professor' | ''>('');
   const router = useRouter();
+  const [registrationStatus, setRegistrationStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
+  const {toast} = useToast();
 
   const handleRegister = async () => {
-    // Placeholder for registration logic - replace with Firebase or similar
-    // Here you would:
-    // 1. Create the user in Firebase Auth
-    // 2. Add user details to Firebase Firestore (including the role)
-    // 3. Send a notification email to the admin
+    setRegistrationStatus('pending');
+    try {
+      // Simulate registration processing (e.g., Firebase auth, Firestore update)
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate network request
 
-    // For now, let's just simulate the registration and redirect
-    console.log('Registering user:', {email, password, role});
-    alert('Registration successful! An admin needs to approve your registration.');
-    router.push('/'); // Redirect to home page after registration
+      // Simulate success
+      console.log('Registering user:', {email, password, role});
+
+      // Send notification email to the admin (replace with actual admin email)
+      await sendEmail({
+        to: 'carlo.checchi@gmail.com',
+        subject: 'New User Registration',
+        html: `<p>A new user has registered with the email: ${email} and role: ${role}. Please review and approve.</p>`,
+      });
+
+      setRegistrationStatus('success');
+      toast({
+        title: "Registration Successful",
+        description: "Your registration has been submitted and is pending admin approval.",
+      });
+
+      router.push('/'); // Redirect to home page after registration
+
+    } catch (error) {
+      console.error('Registration failed:', error);
+      setRegistrationStatus('error');
+      toast({
+        variant: "destructive",
+        title: "Registration Failed",
+        description: "There was an error during registration. Please try again.",
+      });
+    } finally {
+      // Reset the registration status to 'idle' after a delay
+      setTimeout(() => setRegistrationStatus('idle'), 3000);
+    }
   };
 
   return (
@@ -42,6 +71,7 @@ export default function Register() {
               placeholder="example@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={registrationStatus === 'pending'}
             />
           </div>
           <div className="grid gap-2">
@@ -51,11 +81,15 @@ export default function Register() {
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              disabled={registrationStatus === 'pending'}
             />
           </div>
           <div className="grid gap-2">
             <label htmlFor="role">Role</label>
-            <Select onValueChange={(value) => setRole(value as 'student' | 'professor')}>
+            <Select
+              onValueChange={(value) => setRole(value as 'student' | 'professor')}
+              disabled={registrationStatus === 'pending'}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select Role" />
               </SelectTrigger>
@@ -65,7 +99,9 @@ export default function Register() {
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={handleRegister}>Register</Button>
+          <Button onClick={handleRegister} disabled={registrationStatus === 'pending'}>
+            {registrationStatus === 'pending' ? 'Registering...' : 'Register'}
+          </Button>
         </CardContent>
       </Card>
     </main>
