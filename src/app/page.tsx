@@ -16,6 +16,18 @@ export default function Home() {
 
   const handleLogin = () => {
     // Placeholder for authentication logic
+
+    //Check registered users in localStorage
+    const storedUser = localStorage.getItem(username);
+    if(storedUser){
+      const userData = JSON.parse(storedUser);
+      if(userData.password === password){
+        setRole(userData.role);
+        return;
+      }
+    }
+
+    // Existing Admin user authentication
     if (username === 'admin' && password === 'admin') {
       setRole('admin');
     } else if (username === 'professor' && password === 'professor') {

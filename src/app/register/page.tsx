@@ -34,6 +34,11 @@ export default function Register() {
       // Simulate success
       console.log('Registering user:', {email, password, role});
 
+      //Here, simulate user creation by setting a localStorage entry to match authentication function
+
+      localStorage.setItem(email, JSON.stringify({password, role}));
+
+
       // Send notification email to the admin (replace with actual admin email)
       await sendEmail({
         to: 'carlo.checchi@gmail.com',
@@ -115,3 +120,4 @@ export default function Register() {
     </main>
   );
 }
+
