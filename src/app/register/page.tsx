@@ -21,7 +21,7 @@ export default function Register() {
     setRegistrationStatus('pending');
     try {
       // Simulate registration processing (e.g., Firebase auth, Firestore update)
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate network request
+      // await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate network request
 
       // Simulate success
       console.log('Registering user:', {email, password, role});
@@ -45,17 +45,17 @@ export default function Register() {
 
       router.push('/'); // Redirect to home page after registration
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration failed:', error);
       setRegistrationStatus('error');
       toast({
         variant: "destructive",
         title: "Registration Failed",
-        description: "There was an error during registration. Please try again.",
+        description: error.message || "There was an error during registration. Please try again.",
       });
     } finally {
       // Reset the registration status to 'idle' after a delay
-      setTimeout(() => setRegistrationStatus('idle'), 3000);
+      setRegistrationStatus('idle');
     }
   };
 
