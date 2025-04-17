@@ -24,6 +24,10 @@ export default function Register() {
         throw new Error('Please fill in all fields.');
       }
 
+      if (role === '') {
+        throw new Error('Please select a role.');
+      }
+
       // Simulate registration processing (e.g., Firebase auth, Firestore update)
       // await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate network request
 
