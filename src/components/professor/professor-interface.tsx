@@ -53,7 +53,7 @@ export function ProfessorInterface() {
                     <TableCell>
                       <Button
                         onClick={() => toggleSlotAvailability(slot.id)}
-                        className={slot.isAvailable ? 'bg-green-500 hover:bg-green-700 text-white' : 'bg-red-500 hover:bg-red-700 text-white'}
+                        className={slot.isAvailable ? 'bg-red-500 hover:bg-red-700 text-white' : 'bg-green-500 hover:bg-green-700 text-white'}
                       >
                         {slot.isAvailable ? 'Remove' : 'Make Available'}
                       </Button>
@@ -68,3 +68,4 @@ export function ProfessorInterface() {
     </div>
   );
 }
+
