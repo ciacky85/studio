@@ -1,35 +1,22 @@
 'use client';
 
-import {useState} from 'react';
+import {useState, useEffect} from 'react';
 import {Button} from '@/components/ui/button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
-import {Input} from '@/components/ui/input';
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select';
-import {Textarea} from '@/components/ui/textarea';
+import {Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 
 export function ProfessorInterface() {
   const [availableSlots, setAvailableSlots] = useState([
-    {id: 1, classroom: 'Room 101', day: 'Monday', time: '8:00', duration: 60},
-    {id: 2, classroom: 'Room 102', day: 'Tuesday', time: '17:00', duration: 30},
+    {id: 1, classroom: 'Room 101', day: 'Monday', time: '8:00', duration: 60, isAvailable: false},
+    {id: 2, classroom: 'Room 102', day: 'Tuesday', time: '17:00', duration: 30, isAvailable: true},
   ]);
-  const [newSlotClassroom, setNewSlotClassroom] = useState('');
-  const [newSlotDay, setNewSlotDay] = useState('');
-  const [newSlotTime, setNewSlotTime] = useState('');
-  const [newSlotDuration, setNewSlotDuration] = useState('');
 
-  const addSlot = () => {
-    const newSlot = {
-      id: availableSlots.length + 1,
-      classroom: newSlotClassroom,
-      day: newSlotDay,
-      time: newSlotTime,
-      duration: parseInt(newSlotDuration),
-    };
-    setAvailableSlots([...availableSlots, newSlot]);
-    setNewSlotClassroom('');
-    setNewSlotDay('');
-    setNewSlotTime('');
-    setNewSlotDuration('');
+  const toggleSlotAvailability = (id: number) => {
+    setAvailableSlots(
+      availableSlots.map((slot) =>
+        slot.id === id ? {...slot, isAvailable: !slot.isAvailable} : slot
+      )
+    );
   };
 
   return (
@@ -42,57 +29,42 @@ export function ProfessorInterface() {
         <CardContent className="grid gap-4">
           <div>
             <h3>Available Slots</h3>
-            <ul>
-              {availableSlots.map((slot) => (
-                <li key={slot.id}>
-                  {slot.classroom} - {slot.day} at {slot.time} ({slot.duration} minutes)
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              type="text"
-              placeholder="Classroom"
-              value={newSlotClassroom}
-              onChange={(e) => setNewSlotClassroom(e.target.value)}
-            />
-            <Select onValueChange={(value) => setNewSlotDay(value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select Day" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Monday">Monday</SelectItem>
-                <SelectItem value="Tuesday">Tuesday</SelectItem>
-                <SelectItem value="Wednesday">Wednesday</SelectItem>
-                <SelectItem value="Thursday">Thursday</SelectItem>
-                <SelectItem value="Friday">Friday</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              type="time"
-              placeholder="Time"
-              value={newSlotTime}
-              onChange={(e) => setNewSlotTime(e.target.value)}
-            />
-            <Select onValueChange={(value) => setNewSlotDuration(value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select Duration" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="30">30 minutes</SelectItem>
-                <SelectItem value="60">60 minutes</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button className="col-span-2" onClick={addSlot}>
-              Add Slot
-            </Button>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Classroom</TableHead>
+                  <TableHead>Day</TableHead>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Availability</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {availableSlots.map((slot) => (
+                  <TableRow key={slot.id}>
+                    <TableCell>{slot.classroom}</TableCell>
+                    <TableCell>{slot.day}</TableCell>
+                    <TableCell>{slot.time}</TableCell>
+                    <TableCell>{slot.duration}</TableCell>
+                    <TableCell>
+                      {slot.isAvailable ? 'Available' : 'Not Available'}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        onClick={() => toggleSlotAvailability(slot.id)}
+                        className={slot.isAvailable ? 'bg-green-500 hover:bg-green-700 text-white' : 'bg-red-500 hover:bg-red-700 text-white'}
+                      >
+                        {slot.isAvailable ? 'Remove' : 'Make Available'}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
     </div>
   );
 }
-
