@@ -13,9 +13,11 @@ export default function Home() {
   const [role, setRole] = useState<'admin' | 'professor' | 'student' | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const handleLogin = () => {
     // Placeholder for authentication logic
+    setLoginError(null); // Clear any previous error
 
     //Check registered users in localStorage
     const storedUser = localStorage.getItem(username);
@@ -25,25 +27,33 @@ export default function Home() {
         if(userData.password === password){
           setRole(userData.role);
           return;
+        } else {
+          setLoginError('Invalid credentials');
         }
       } catch (error) {
         console.error("Error parsing user data from localStorage:", error);
-        alert('Invalid credentials');
-        return;
+        setLoginError('Invalid credentials');
+        
+      }
+    } else {
+      // Existing Admin user authentication
+      if (username === 'admin' && password === 'admin') {
+        setRole('admin');
+      } else if (username === 'professor' && password === 'professor') {
+        setRole('professor');
+      } else if (username === 'student' && password === 'student') {
+        setRole('student');
+      } else if (username === 'carlo.checchi@gmail.com' && password === '8257619t') {
+        setRole('admin');
+      } else {
+        setLoginError('Invalid credentials');
       }
     }
 
-    // Existing Admin user authentication
-    if (username === 'admin' && password === 'admin') {
-      setRole('admin');
-    } else if (username === 'professor' && password === 'professor') {
-      setRole('professor');
-    } else if (username === 'student' && password === 'student') {
-      setRole('student');
-    } else if (username === 'carlo.checchi@gmail.com' && password === '8257619t') {
-      setRole('admin');
-    } else {
-      alert('Invalid credentials');
+    if (loginError) {
+      setUsername('');
+      setPassword('');
+      alert(loginError);
     }
   };
 
@@ -85,6 +95,9 @@ export default function Home() {
               <Link href="/register">
                 <Button variant="outline">Register</Button>
               </Link>
+              {loginError && (
+                  <p className="text-red-500">{loginError}</p>
+              )}
             </CardContent>
           </Card>
         );
