@@ -20,9 +20,15 @@ export default function Home() {
     //Check registered users in localStorage
     const storedUser = localStorage.getItem(username);
     if(storedUser){
-      const userData = JSON.parse(storedUser);
-      if(userData.password === password){
-        setRole(userData.role);
+      try{
+        const userData = JSON.parse(storedUser);
+        if(userData.password === password){
+          setRole(userData.role);
+          return;
+        }
+      } catch (error) {
+        console.error("Error parsing user data from localStorage:", error);
+        alert('Invalid credentials');
         return;
       }
     }
@@ -91,4 +97,5 @@ export default function Home() {
     </main>
   );
 }
+
 
