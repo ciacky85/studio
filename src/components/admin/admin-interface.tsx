@@ -64,6 +64,9 @@ export function AdminInterface() {
     const registration = pendingRegistrations.find((reg) => reg.id === id);
     if (registration) {
       try {
+        // Remove from pending registrations from local storage
+        localStorage.removeItem(registration.email);
+
         // Send approval email
         await sendEmail({
           to: registration.email,
@@ -93,6 +96,9 @@ export function AdminInterface() {
     const registration = pendingRegistrations.find((reg) => reg.id === id);
     if (registration) {
       try {
+        // Remove registration from local storage
+        localStorage.removeItem(registration.email);
+
         // Send rejection email
         await sendEmail({
           to: registration.email,
@@ -138,7 +144,7 @@ export function AdminInterface() {
           <CardDescription>Manage user registrations and classroom availability.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <Tabs defaultvalue="classrooms" className="w-[400px]">
+          <Tabs defaultValue="classrooms" className="w-full">
             <TabsList>
               <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
               <TabsTrigger value="users">Users</TabsTrigger>
