@@ -69,8 +69,8 @@ export default function Register() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <Card className="w-[400px] p-4">
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-12 md:p-24">
+      <Card className="w-full max-w-md p-4">
         <CardHeader>
           <CardTitle>Register</CardTitle>
           <CardDescription>Create an account to access the application.</CardDescription>
@@ -103,7 +103,7 @@ export default function Register() {
               onValueChange={(value) => setRole(value as 'student' | 'professor' | '')}
               disabled={registrationStatus === 'pending'}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select Role" />
               </SelectTrigger>
               <SelectContent>

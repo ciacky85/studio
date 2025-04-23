@@ -125,7 +125,7 @@ export function AdminInterface() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 p-4">
       <Card>
         <CardHeader>
           <CardTitle>Admin Interface</CardTitle>
@@ -134,70 +134,75 @@ export function AdminInterface() {
         <CardContent className="grid gap-4">
           <div>
             <h3>Pending Registrations</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pendingRegistrations.map((reg) => (
-                  <TableRow key={reg.id}>
-                    <TableCell>{reg.name}</TableCell>
-                    <TableCell>{reg.role}</TableCell>
-                    <TableCell>{reg.email}</TableCell>
-                    <TableCell>
-                      <Button onClick={() => approveRegistration(reg.id)}>Approve</Button>
-                      <Button onClick={() => rejectRegistration(reg.id)} variant="destructive">Reject</Button>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {pendingRegistrations.map((reg) => (
+                    <TableRow key={reg.id}>
+                      <TableCell>{reg.name}</TableCell>
+                      <TableCell>{reg.role}</TableCell>
+                      <TableCell>{reg.email}</TableCell>
+                      <TableCell>
+                        <Button onClick={() => approveRegistration(reg.id)}>Approve</Button>
+                        <Button onClick={() => rejectRegistration(reg.id)} variant="destructive">Reject</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
 
           <div>
             <h3>Classroom Schedule Management</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  {days.map((day) => (
-                    <TableHead key={day}>{day}</TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {timeSlots.map((time) => (
-                  <TableRow key={time}>
-                    <TableCell>{time}</TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-24">Time</TableHead>
                     {days.map((day) => (
-                      <TableCell key={`${day}-${time}`}>
-                        <Select onValueChange={(professor) => handleProfessorChange(day, time, professor)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Assign Professor" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {professors.map((professor) => (
-                              <SelectItem key={professor} value={professor}>
-                                {professor}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
+                      <TableHead key={day} className="w-40">{day}</TableHead>
                     ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {timeSlots.map((time) => (
+                    <TableRow key={time}>
+                      <TableCell className="font-medium">{time}</TableCell>
+                      {days.map((day) => (
+                        <TableCell key={`${day}-${time}`}>
+                          <Select onValueChange={(professor) => handleProfessorChange(day, time, professor)}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Assign Professor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {professors.map((professor) => (
+                                <SelectItem key={professor} value={professor}>
+                                  {professor}
+                                </SelectItem>
+                              ))}
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
     </div>
   );
 }
+

@@ -18,7 +18,7 @@ export function StudentInterface() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 p-4">
       <Card>
         <CardHeader>
           <CardTitle>Student Interface</CardTitle>
@@ -27,32 +27,34 @@ export function StudentInterface() {
         <CardContent className="grid gap-4">
           <div>
             <h3>Available Slots</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Classroom</TableHead>
-                  <TableHead>Day</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Professor</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {availableSlots.map((slot) => (
-                  <TableRow key={slot.id}>
-                    <TableCell>{slot.classroom}</TableCell>
-                    <TableCell>{slot.day}</TableCell>
-                    <TableCell>{slot.time}</TableCell>
-                    <TableCell>{slot.duration}</TableCell>
-                    <TableCell>{slot.professor}</TableCell>
-                    <TableCell>
-                      <Button onClick={() => bookSlot(slot)}>Book</Button>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Classroom</TableHead>
+                    <TableHead>Day</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead>Professor</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {availableSlots.map((slot) => (
+                    <TableRow key={slot.id}>
+                      <TableCell>{slot.classroom}</TableCell>
+                      <TableCell>{slot.day}</TableCell>
+                      <TableCell>{slot.time}</TableCell>
+                      <TableCell>{slot.duration}</TableCell>
+                      <TableCell>{slot.professor}</TableCell>
+                      <TableCell>
+                        <Button onClick={() => bookSlot(slot)}>Book</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
 
           <div>

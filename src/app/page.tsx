@@ -67,7 +67,7 @@ export default function Home() {
         return <StudentInterface />;
       default:
         return (
-          <Card className="w-[400px] p-4">
+          <Card className="w-full max-w-md p-4">
             <CardHeader>
               <CardTitle>Login</CardTitle>
               <CardDescription>Enter your credentials to access the application.</CardDescription>
@@ -105,7 +105,7 @@ export default function Home() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-12 md:p-24">
       {renderInterface()}
     </main>
   );

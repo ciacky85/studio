@@ -36,7 +36,7 @@ export function ProfessorInterface() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 p-4">
       <Card>
         <CardHeader>
           <CardTitle>Professor Interface</CardTitle>
@@ -45,47 +45,50 @@ export function ProfessorInterface() {
         <CardContent className="grid gap-4">
           <div>
             <h3>Available Slots</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Classroom</TableHead>
-                  <TableHead>Day</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Availability</TableHead>
-                  <TableHead>Actions</TableHead>
-                  <TableHead>Booking Info</TableHead> {/* New column */}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {availableSlots.map((slot) => (
-                  <TableRow key={slot.id}>
-                    <TableCell>{slot.classroom}</TableCell>
-                    <TableCell>{slot.day}</TableCell>
-                    <TableCell>{slot.time}</TableCell>
-                    <TableCell>{slot.duration}</TableCell>
-                    <TableCell>
-                      {slot.isAvailable ? 'Available' : 'Not Available'}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        onClick={() => toggleSlotAvailability(slot.id)}
-                        className={slot.isAvailable ? 'bg-red-500 hover:bg-red-700 text-white' : 'bg-green-500 hover:bg-green-700 text-white'}
-                      >
-                        {slot.isAvailable ? 'Remove' : 'Make Available'}
-                      </Button>
-                      <Button onClick={() => bookSlot(slot.id, 'Test Student')}>Simulate Booking</Button>
-                    </TableCell>
-                    <TableCell>
-                      {slot.bookedBy ? `Booked by ${slot.bookedBy} on ${slot.bookingTime}` : 'Not Booked'}
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Classroom</TableHead>
+                    <TableHead>Day</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead>Availability</TableHead>
+                    <TableHead>Actions</TableHead>
+                    <TableHead>Booking Info</TableHead> {/* New column */}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {availableSlots.map((slot) => (
+                    <TableRow key={slot.id}>
+                      <TableCell>{slot.classroom}</TableCell>
+                      <TableCell>{slot.day}</TableCell>
+                      <TableCell>{slot.time}</TableCell>
+                      <TableCell>{slot.duration}</TableCell>
+                      <TableCell>
+                        {slot.isAvailable ? 'Available' : 'Not Available'}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          onClick={() => toggleSlotAvailability(slot.id)}
+                          className={slot.isAvailable ? 'bg-red-500 hover:bg-red-700 text-white' : 'bg-green-500 hover:bg-green-700 text-white'}
+                        >
+                          {slot.isAvailable ? 'Remove' : 'Make Available'}
+                        </Button>
+                        <Button onClick={() => bookSlot(slot.id, 'Test Student')}>Simulate Booking</Button>
+                      </TableCell>
+                      <TableCell>
+                        {slot.bookedBy ? `Booked by ${slot.bookedBy} on ${slot.bookingTime}` : 'Not Booked'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
     </div>
   );
 }
+
