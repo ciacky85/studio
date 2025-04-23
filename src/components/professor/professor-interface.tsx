@@ -96,7 +96,6 @@ export function ProfessorInterface() {
                           >
                             {slot.isAvailable ? 'Remove' : 'Make Available'}
                           </Button>
-                          <Button onClick={() => bookSlot(slot.id, 'Test Student')} disabled={isBooked}>Simulate Booking</Button>
                         </TableCell>
                         <TableCell>
                           {slot.bookedBy ? `Booked by ${slot.bookedBy} on ${slot.bookingTime}` : 'Not Booked'}
@@ -113,3 +112,4 @@ export function ProfessorInterface() {
     </div>
   );
 }
+
