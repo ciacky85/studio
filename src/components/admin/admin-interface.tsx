@@ -23,7 +23,27 @@ export function AdminInterface() {
   ]);
 
   // Sample list of professors (replace with actual data)
-  const professors = ['Professor A', 'Professor B', 'Professor C'];
+  //const professors = ['Professor A', 'Professor B', 'Professor C'];
+  const [professors, setProfessors] = useState<string[]>([]);
+
+  useEffect(() => {
+    // Load professors from local storage
+    const storedProfessors: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        try {
+          const userData = JSON.parse(localStorage.getItem(key) || '{}');
+          if (userData.role === 'professor') {
+            storedProfessors.push(key);
+          }
+        } catch (e) {
+          console.error("Could not parse local storage", e);
+        }
+      }
+    }
+    setProfessors(storedProfessors);
+  }, []);
 
   // Generate time slots from 7:00 to 23:00 in 30-minute intervals
   const timeSlots = generateTimeSlots();
