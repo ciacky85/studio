@@ -1,6 +1,10 @@
 import type {Metadata} from 'next';
 import {Geist, Geist_Mono} from 'next/font/google';
 import './globals.css';
+import Link from 'next/link';
+import {Button} from '@/components/ui/button';
+import {useRouter} from 'next/navigation';
+import {useEffect, useState} from 'react';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -22,11 +26,38 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const [isLoggedIn, setIsLoggedIn] = useState(false); // State to track login status
+  const router = useRouter();
+
+  useEffect(() => {
+    // Check if a user is logged in on component mount
+    const storedUser = localStorage.getItem('loggedInUser');
+    if (storedUser) {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('loggedInUser'); // Remove user from localStorage
+    setIsLoggedIn(false);
+    router.push('/'); // Redirect to the login page
+  };
+
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <header className="flex justify-end p-4">
+          {isLoggedIn ? (
+            <Button onClick={handleLogout}>Logout</Button>
+          ) : (
+            <Link href="/">
+              <Button>Login</Button>
+            </Link>
+          )}
+        </header>
         {children}
       </body>
     </html>
   );
 }
+

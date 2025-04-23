@@ -1,6 +1,6 @@
 'use client';
 
-import {useState} from 'react';
+import {useState, useEffect} from 'react';
 import {AdminInterface} from '@/components/admin/admin-interface';
 import {ProfessorInterface} from '@/components/professor/professor-interface';
 import {StudentInterface} from '@/components/student/student-interface';
@@ -8,12 +8,23 @@ import {Button} from '@/components/ui/button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
 import {Input} from '@/components/ui/input';
 import Link from 'next/link';
+import {useRouter} from 'next/navigation';
 
 export default function Home() {
   const [role, setRole] = useState<'admin' | 'professor' | 'student' | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    // If already logged in, redirect to appropriate interface
+    const storedUser = localStorage.getItem('loggedInUser');
+    if (storedUser) {
+      const userData = JSON.parse(storedUser);
+      setRole(userData.role);
+    }
+  }, []);
 
   const handleLogin = () => {
     // Placeholder for authentication logic
@@ -26,6 +37,8 @@ export default function Home() {
         const userData = JSON.parse(storedUser);
         if(userData.password === password){
           setRole(userData.role);
+          localStorage.setItem('loggedInUser', JSON.stringify({username: username, role: userData.role})); // Store username
+          router.push('/');
           return;
         } else {
           setLoginError('Invalid credentials');
@@ -39,12 +52,20 @@ export default function Home() {
       // Existing Admin user authentication
       if (username === 'admin' && password === 'admin') {
         setRole('admin');
+        localStorage.setItem('loggedInUser', JSON.stringify({username: username, role: 'admin'})); // Store username
+        router.push('/');
       } else if (username === 'professor' && password === 'professor') {
         setRole('professor');
+        localStorage.setItem('loggedInUser', JSON.stringify({username: username, role: 'professor'})); // Store username
+        router.push('/');
       } else if (username === 'student' && password === 'student') {
         setRole('student');
+        localStorage.setItem('loggedInUser', JSON.stringify({username: username, role: 'student'})); // Store username
+        router.push('/');
       } else if (username === 'carlo.checchi@gmail.com' && password === '8257619t') {
         setRole('admin');
+        localStorage.setItem('loggedInUser', JSON.stringify({username: username, role: 'admin'})); // Store username
+        router.push('/');
       } else {
         setLoginError('Invalid credentials');
       }
@@ -110,5 +131,4 @@ export default function Home() {
     </main>
   );
 }
-
 
