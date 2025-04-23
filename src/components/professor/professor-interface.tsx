@@ -4,12 +4,28 @@ import {useState, useEffect} from 'react';
 import {Button} from '@/components/ui/button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
 import {Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
+import {useToast} from "@/hooks/use-toast";
 
 export function ProfessorInterface() {
-  const [availableSlots, setAvailableSlots] = useState([
-    {id: 1, classroom: 'Room 101', day: 'Monday', time: '8:00', duration: 60, isAvailable: false, bookedBy: null, bookingTime: null},
-    {id: 2, classroom: 'Room 102', day: 'Tuesday', time: '17:00', duration: 30, isAvailable: true, bookedBy: null, bookingTime: null},
-  ]);
+  const [availableSlots, setAvailableSlots] = useState(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== 'undefined') {
+      const storedSlots = localStorage.getItem('availableSlots');
+      return storedSlots ? JSON.parse(storedSlots) : [
+        {id: 1, classroom: 'Room 101', day: 'Monday', time: '8:00', duration: 60, isAvailable: false, bookedBy: null, bookingTime: null},
+        {id: 2, classroom: 'Room 102', day: 'Tuesday', time: '17:00', duration: 30, isAvailable: true, bookedBy: null, bookingTime: null},
+      ];
+    }
+    return [
+      {id: 1, classroom: 'Room 101', day: 'Monday', time: '8:00', duration: 60, isAvailable: false, bookedBy: null, bookingTime: null},
+      {id: 2, classroom: 'Room 102', day: 'Tuesday', time: '17:00', duration: 30, isAvailable: true, bookedBy: null, bookingTime: null},
+    ];
+  });
+
+  useEffect(() => {
+    // Save to localStorage whenever availableSlots changes
+    localStorage.setItem('availableSlots', JSON.stringify(availableSlots));
+  }, [availableSlots]);
 
   const toggleSlotAvailability = (id: number) => {
     setAvailableSlots(
@@ -35,6 +51,8 @@ export function ProfessorInterface() {
     );
   };
 
+  const {toast} = useToast();
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <Card>
@@ -59,29 +77,33 @@ export function ProfessorInterface() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {availableSlots.map((slot) => (
-                    <TableRow key={slot.id}>
-                      <TableCell>{slot.classroom}</TableCell>
-                      <TableCell>{slot.day}</TableCell>
-                      <TableCell>{slot.time}</TableCell>
-                      <TableCell>{slot.duration}</TableCell>
-                      <TableCell>
-                        {slot.isAvailable ? 'Available' : 'Not Available'}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          onClick={() => toggleSlotAvailability(slot.id)}
-                          className={slot.isAvailable ? 'bg-red-500 hover:bg-red-700 text-white' : 'bg-green-500 hover:bg-green-700 text-white'}
-                        >
-                          {slot.isAvailable ? 'Remove' : 'Make Available'}
-                        </Button>
-                        <Button onClick={() => bookSlot(slot.id, 'Test Student')}>Simulate Booking</Button>
-                      </TableCell>
-                      <TableCell>
-                        {slot.bookedBy ? `Booked by ${slot.bookedBy} on ${slot.bookingTime}` : 'Not Booked'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {availableSlots.map((slot) => {
+                    const isBooked = slot.bookedBy !== null;
+                    return (
+                      <TableRow key={slot.id}>
+                        <TableCell>{slot.classroom}</TableCell>
+                        <TableCell>{slot.day}</TableCell>
+                        <TableCell>{slot.time}</TableCell>
+                        <TableCell>{slot.duration}</TableCell>
+                        <TableCell>
+                          {slot.isAvailable ? 'Available' : 'Not Available'}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            onClick={() => toggleSlotAvailability(slot.id)}
+                            className={slot.isAvailable ? 'bg-red-500 hover:bg-red-700 text-white' : 'bg-green-500 hover:bg-green-700 text-white'}
+                            disabled={isBooked}
+                          >
+                            {slot.isAvailable ? 'Remove' : 'Make Available'}
+                          </Button>
+                          <Button onClick={() => bookSlot(slot.id, 'Test Student')} disabled={isBooked}>Simulate Booking</Button>
+                        </TableCell>
+                        <TableCell>
+                          {slot.bookedBy ? `Booked by ${slot.bookedBy} on ${slot.bookingTime}` : 'Not Booked'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -91,4 +113,3 @@ export function ProfessorInterface() {
     </div>
   );
 }
-
