@@ -57,7 +57,21 @@ export function AdminInterface() {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
   // State to hold the schedule (classroom, day, time, professor)
-  const [schedule, setSchedule] = useState({});
+  const [schedule, setSchedule] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    // Load schedule from local storage on component mount
+    const storedSchedule = localStorage.getItem('classroomSchedule');
+    if (storedSchedule) {
+      setSchedule(JSON.parse(storedSchedule));
+    }
+  }, []);
+
+  useEffect(() => {
+    // Save schedule to local storage whenever it changes
+    localStorage.setItem('classroomSchedule', JSON.stringify(schedule));
+  }, [schedule]);
+
   const {toast} = useToast();
 
   const approveRegistration = async (id: number) => {
@@ -169,7 +183,9 @@ export function AdminInterface() {
                           <TableCell key={`${day}-${time}`}>
                             <Select onValueChange={(professor) => handleProfessorChange(day, time, professor)}>
                               <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Assign Professor" />
+                                <SelectValue placeholder="Assign Professor">
+                                  {schedule[`${day}-${time}`] || "Assign Professor"}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
                                 {professors.map((professor) => (
@@ -222,3 +238,4 @@ export function AdminInterface() {
     </div>
   );
 }
+
