@@ -118,7 +118,7 @@ export function ProfessorInterface() {
     // 3. Get existing slots specific to the current professor and selected date for quick lookup
     const professorExistingSlotsMap = new Map<string, BookableSlot>(
       (allProfessorAvailability[currentUserEmail] || [])
-        .filter(slot => slot.date === formattedDate && slot.duration === 60) // Only consider 60min slots for lookup
+        .filter(slot => slot && slot.date === formattedDate && slot.duration === 60) // Added check for slot existence
         .map(slot => [slot.id, slot])
     );
 
@@ -152,7 +152,13 @@ export function ProfessorInterface() {
     });
 
     // Sort the generated slots by time
-     generatedSlots.sort((a, b) => a.time.localeCompare(b.time)); // "08:00" sorts correctly
+     generatedSlots.sort((a, b) => {
+        // Defensive check for time property
+        if (!a.time || !b.time) {
+          return 0; // Maintain original order if time is missing
+        }
+        return a.time.localeCompare(b.time); // "08:00" sorts correctly
+     });
 
     setDailySlots(generatedSlots);
 
@@ -183,17 +189,24 @@ export function ProfessorInterface() {
                 }
             }
 
-            // 2. Get existing slots for the current professor, EXCLUDING the currently selected date
+            // 2. Get existing slots for the current professor, filtering out invalid ones and excluding the selected date
             const otherDateSlots = (allProfessorAvailability[currentUserEmail] || [])
-                .filter(slot => slot.date !== currentFormattedDate);
+                .filter(slot => slot && slot.date && slot.time && slot.date !== currentFormattedDate); // Added validation check
 
             // 3. Combine the other date slots with the UPDATED slots for the selected date
             // Ensure all slots in the updated list have duration 60, just in case
-            const validatedUpdatedSlots = updatedSlotsForSelectedDate.map(slot => ({...slot, duration: 60}));
+            const validatedUpdatedSlots = updatedSlotsForSelectedDate
+                .filter(slot => slot && slot.date && slot.time) // Filter invalid slots from update list too
+                .map(slot => ({...slot, duration: 60}));
             const combinedSlots = [...otherDateSlots, ...validatedUpdatedSlots];
 
             // Sort combined slots before saving (optional but good practice)
             combinedSlots.sort((a, b) => {
+               // Defensive checks for missing properties
+               if (!a || !b || !a.date || !b.date || !a.time || !b.time) {
+                    console.warn('Attempted to sort invalid slot data:', a, b);
+                    return 0; // Avoid erroring, maintain relative order
+               }
                const dateCompare = a.date.localeCompare(b.date);
                if (dateCompare !== 0) return dateCompare;
                return a.time.localeCompare(b.time);
@@ -298,14 +311,21 @@ export function ProfessorInterface() {
                                  disabled={isBooked} // Disable toggling if booked
                                  variant={slot.isAvailable ? 'destructive' : 'default'}
                                  size="sm"
-                                 className={isBooked ? 'bg-gray-400 cursor-not-allowed' : (slot.isAvailable ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white')} // Consistent colors
+                                 className={cn(
+                                    'text-white', // Ensure text color contrasts with background
+                                    isBooked
+                                        ? 'bg-gray-400 cursor-not-allowed'
+                                        : slot.isAvailable
+                                            ? 'bg-red-600 hover:bg-red-700' // Destructive for "Make Unavailable"
+                                            : 'bg-green-600 hover:bg-green-700' // Default/Success for "Make Available"
+                                  )}
                                >
                                  {isBooked ? 'Booked' : (slot.isAvailable ? 'Make Unavailable' : 'Make Available')}
                                </Button>
                              </TableCell>
                              <TableCell>
                                {slot.bookedBy
-                                 ? `By ${slot.bookedBy} (${slot.bookingTime ? format(parseISO(slot.bookingTime), 'Pp') : 'N/A'})`
+                                 ? `By ${slot.bookedBy}${slot.bookingTime ? ` (${format(parseISO(slot.bookingTime), 'Pp')})` : ''}`
                                  : '—'} {/* Show dash if not booked */}
                              </TableCell>
                            </TableRow>
@@ -322,3 +342,5 @@ export function ProfessorInterface() {
   );
 }
 
+
+    
