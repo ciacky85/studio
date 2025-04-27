@@ -394,7 +394,7 @@ export function ProfessorInterface() {
                        {dailySlots.map((slot) => {
                          const isBooked = slot.bookedBy !== null;
                          const statusText = isBooked ? 'Booked' : (slot.isAvailable ? 'Available' : 'Unavailable');
-                         const statusColor = isBooked ? 'text-yellow-600' : (slot.isAvailable ? 'text-green-600' : 'text-red-600');
+                         const statusColor = isBooked ? 'text-muted-foreground' : (slot.isAvailable ? 'text-green-600' : 'text-red-600'); // Grey for booked
 
                          return (
                            <TableRow key={slot.id}>
@@ -404,11 +404,12 @@ export function ProfessorInterface() {
                              <TableCell className="text-center space-x-2"> {/* Added space-x-2 */}
                               {isBooked ? (
                                   <Button
-                                      onClick={() => cancelBooking(slot.id)}
-                                      variant="destructive"
+                                      variant="ghost" // Or outline, but disabled
                                       size="sm"
+                                      disabled // Disable action in daily view if booked
+                                      className="cursor-not-allowed text-muted-foreground"
                                   >
-                                      Cancel Booking
+                                      Booked
                                   </Button>
                               ) : (
                                   <Button
@@ -446,7 +447,7 @@ export function ProfessorInterface() {
         <Card className="w-full">
              <CardHeader>
                  <CardTitle>All Your Booked Lessons</CardTitle>
-                 <CardDescription>List of all lessons currently booked with you.</CardDescription>
+                 <CardDescription>List of all lessons currently booked with you. You can cancel bookings from here.</CardDescription>
              </CardHeader>
              <CardContent>
                 {allBookedSlots.length === 0 ? (
@@ -492,5 +493,3 @@ export function ProfessorInterface() {
     </div>
   );
 }
-
-    
