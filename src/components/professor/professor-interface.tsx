@@ -9,18 +9,17 @@ import {Calendar} from '@/components/ui/calendar'; // Import Calendar
 import {useToast} from "@/hooks/use-toast";
 import { format, getDay, parseISO } from 'date-fns'; // Import date-fns functions
 
-// Define the structure of a bookable slot (30 mins) with date
+// Define the structure of a bookable slot (now 60 mins) with date
 interface BookableSlot {
-  id: string; // Use 'YYYY-MM-DD-HH:mm-professorEmail-part' as a unique identifier
+  id: string; // Use 'YYYY-MM-DD-HH:mm-professorEmail' as a unique identifier
   date: string; // 'YYYY-MM-DD' format
   day: string; // Day of the week (e.g., 'Monday')
-  time: string; // Start time of the 30-min slot (e.g., 8:00, 8:30)
-  duration: number; // Always 30 minutes
+  time: string; // Start time of the 60-min slot (e.g., 08:00)
+  duration: number; // Now always 60 minutes
   isAvailable: boolean; // Professor sets this for student booking
   bookedBy: string | null; // Student email if booked
   bookingTime: string | null; // ISO string timestamp of booking
   professorEmail: string; // Keep track of the professor
-  // classroom: string; // Classroom info might not be available in current schedule format
 }
 
 // Key for storing all professors' availability (now date-specific slots) in localStorage
@@ -104,7 +103,6 @@ export function ProfessorInterface() {
     );
 
     // 4. Generate potential slots based ONLY on admin schedule for the specific day of the week assigned to this professor
-    // Use a Map to ensure unique slot IDs during generation
     const generatedSlotsMap = new Map<string, BookableSlot>();
 
     Object.entries(classroomSchedule).forEach(([hourlyKey, assignedEmail]) => {
@@ -112,45 +110,23 @@ export function ProfessorInterface() {
 
       // Check if the slot is for the selected day of the week AND assigned to the current professor
       if (day === dayOfWeekString && assignedEmail === currentUserEmail) {
-        const hour = parseInt(hourTime.split(':')[0]);
-
-        // Create two 30-min potential slots for this assigned hour block
-        const slot1Time = `${String(hour).padStart(2, '0')}:00`;
-        const slot2Time = `${String(hour).padStart(2, '0')}:30`;
-        // Unique ID includes date, time, professor email, and a part index (0/1)
-        const slot1Id = `${formattedDate}-${slot1Time}-${currentUserEmail}-0`;
-        const slot2Id = `${formattedDate}-${slot2Time}-${currentUserEmail}-1`;
+        // Unique ID includes date, time, and professor email
+        const slotId = `${formattedDate}-${hourTime}-${currentUserEmail}`;
 
         // Retrieve existing data for this specific slot if it exists from previous saves
-        const existingSlot1 = existingSlotsForDateMap.get(slot1Id);
-        const existingSlot2 = existingSlotsForDateMap.get(slot2Id);
+        const existingSlot = existingSlotsForDateMap.get(slotId);
 
-        // Add the first 30-min slot to the map, using existing data or defaults
-        // Map automatically handles overwrites if the same ID is generated twice (shouldn't happen here but safer)
-        generatedSlotsMap.set(slot1Id, {
-          id: slot1Id,
+        // Add the 60-min slot to the map, using existing data or defaults
+        generatedSlotsMap.set(slotId, {
+          id: slotId,
           date: formattedDate,
           day: dayOfWeekString,
-          time: slot1Time,
-          duration: 30,
+          time: hourTime, // Use the hourly time directly
+          duration: 60,   // Duration is now 60 minutes
           // Use saved availability status, default to false (not available) if never set
-          isAvailable: existingSlot1?.isAvailable ?? false,
-          bookedBy: existingSlot1?.bookedBy ?? null,
-          bookingTime: existingSlot1?.bookingTime ?? null,
-          professorEmail: currentUserEmail,
-        });
-
-        // Add the second 30-min slot to the map, using existing data or defaults
-        generatedSlotsMap.set(slot2Id, {
-          id: slot2Id,
-          date: formattedDate,
-          day: dayOfWeekString,
-          time: slot2Time,
-          duration: 30,
-          // Use saved availability status, default to false (not available) if never set
-          isAvailable: existingSlot2?.isAvailable ?? false,
-          bookedBy: existingSlot2?.bookedBy ?? null,
-          bookingTime: existingSlot2?.bookingTime ?? null,
+          isAvailable: existingSlot?.isAvailable ?? false,
+          bookedBy: existingSlot?.bookedBy ?? null,
+          bookingTime: existingSlot?.bookingTime ?? null,
           professorEmail: currentUserEmail,
         });
       }
@@ -195,7 +171,13 @@ export function ProfessorInterface() {
                 .filter(slot => slot.date !== currentFormattedDate);
 
             // Combine other date slots with the updated slots for the selected date
-            allProfessorAvailability[currentUserEmail] = [...otherDateSlots, ...updatedSlotsForSelectedDate];
+            // Ensure no duplicates if logic somehow creates them (shouldn't happen with Map)
+            const combinedSlotsMap = new Map<string, BookableSlot>();
+            otherDateSlots.forEach(slot => combinedSlotsMap.set(slot.id, slot));
+            updatedSlotsForSelectedDate.forEach(slot => combinedSlotsMap.set(slot.id, slot)); // Overwrite with updated data for selected date
+
+            allProfessorAvailability[currentUserEmail] = Array.from(combinedSlotsMap.values());
+
 
             // Save the combined list back to localStorage
             localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
@@ -233,7 +215,7 @@ export function ProfessorInterface() {
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Professor Interface</CardTitle>
-          <CardDescription>Select a date to manage your bookable 30-minute slots within your assigned times.</CardDescription>
+          <CardDescription>Select a date to manage your bookable 60-minute slots within your assigned times.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 md:grid-cols-2"> {/* Grid for Calendar + Table */}
           <div className="flex justify-center"> {/* Center Calendar */}

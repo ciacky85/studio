@@ -9,13 +9,13 @@ import {Calendar} from '@/components/ui/calendar'; // Import Calendar
 import {useToast} from "@/hooks/use-toast";
 import { format, isBefore, startOfDay, parseISO, differenceInHours } from 'date-fns'; // Import date-fns functions
 
-// Define the structure of a slot as seen by the student (matching Professor's BookableSlot)
+// Define the structure of a slot as seen by the student (now 60 min)
 interface StudentSlotView {
-  id: string; // 'YYYY-MM-DD-HH:mm-professorEmail-part' unique ID
+  id: string; // 'YYYY-MM-DD-HH:mm-professorEmail' unique ID
   date: string; // 'YYYY-MM-DD'
   day: string; // Day of the week
-  time: string; // Start time
-  duration: number; // 30 min
+  time: string; // Start time (e.g., 08:00)
+  duration: number; // Now 60 min
   professorEmail: string;
   isBookedByCurrentUser: boolean;
   bookingTime: string | null; // ISO string, needed for cancellation check
@@ -92,13 +92,14 @@ export function StudentInterface() {
      // Iterate through each professor's list of slots
      Object.values(allProfessorAvailability).flat().forEach(slot => {
          // Basic validation of the slot structure read from storage
-         if (slot && slot.id && slot.date && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail) {
+         // Check for duration explicitly
+         if (slot && slot.id && slot.date && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail && typeof slot.duration === 'number') {
             const studentViewSlot: StudentSlotView = {
                 id: slot.id,
                 date: slot.date,
                 day: slot.day,
                 time: slot.time,
-                duration: slot.duration || 30,
+                duration: slot.duration, // Use stored duration
                 professorEmail: slot.professorEmail,
                 isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
                 bookingTime: slot.bookingTime || null, // Pass booking time
@@ -121,7 +122,7 @@ export function StudentInterface() {
                 loadedBookedByUser.push(studentViewSlot);
             }
          } else {
-             // console.warn(`Invalid slot structure found:`, slot); // Log if data structure is unexpected
+              console.warn(`Invalid or incomplete slot structure found:`, slot); // Log if data structure is unexpected
          }
      });
 
@@ -291,7 +292,7 @@ export function StudentInterface() {
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Student Interface</CardTitle>
-          <CardDescription>Select a date to view and book available 30-minute lesson slots.</CardDescription>
+          <CardDescription>Select a date to view and book available 60-minute lesson slots.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 md:grid-cols-2"> {/* Grid layout */}
             {/* Calendar Selection */}
@@ -321,6 +322,7 @@ export function StudentInterface() {
                         <TableRow>
                           <TableHead className="w-24">Time</TableHead>
                           <TableHead>Professor</TableHead>
+                          <TableHead className="w-20">Duration</TableHead>
                           <TableHead className="w-28">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -329,6 +331,7 @@ export function StudentInterface() {
                           <TableRow key={`available-${slot.id}`}>
                             <TableCell>{slot.time}</TableCell>
                             <TableCell>{slot.professorEmail}</TableCell>
+                            <TableCell>{slot.duration} min</TableCell>
                             <TableCell>
                               <Button onClick={() => bookSlot(slot)} size="sm">Book</Button>
                             </TableCell>
@@ -353,6 +356,7 @@ export function StudentInterface() {
                          <TableHead className="w-32">Date</TableHead>
                          <TableHead className="w-24">Time</TableHead>
                          <TableHead>Professor</TableHead>
+                         <TableHead className="w-20">Duration</TableHead>
                          <TableHead className="w-40">Actions</TableHead>
                        </TableRow>
                      </TableHeader>
@@ -367,6 +371,7 @@ export function StudentInterface() {
                                      <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
                                      <TableCell>{slot.time}</TableCell>
                                      <TableCell>{slot.professorEmail}</TableCell>
+                                     <TableCell>{slot.duration} min</TableCell>
                                      <TableCell>
                                          <Button
                                              onClick={() => cancelBooking(slot)}
