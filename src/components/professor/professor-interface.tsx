@@ -8,6 +8,7 @@ import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/c
 import {Calendar} from '@/components/ui/calendar'; // Import Calendar
 import {useToast} from "@/hooks/use-toast";
 import { format, getDay, parseISO, startOfDay, isBefore } from 'date-fns'; // Import date-fns functions
+import { cn } from "@/lib/utils"; // Import cn utility
 
 // Define the structure of a bookable slot (now 60 mins) with date
 interface BookableSlot {
@@ -209,6 +210,7 @@ export function ProfessorInterface() {
                }
                const dateCompare = a.date.localeCompare(b.date);
                if (dateCompare !== 0) return dateCompare;
+               // Ensure 'time' exists before comparing
                return a.time.localeCompare(b.time);
             });
 
@@ -280,7 +282,7 @@ export function ProfessorInterface() {
             </h3>
              {dailySlots.length === 0 ? (
                  <p className="text-muted-foreground p-4 text-center">
-                    {selectedDate ? (isBefore(selectedDate, startOfDay(new Date())) ? "Cannot manage slots for past dates." : `No time slots assigned by admin for you on ${daysOfWeek[getDay(selectedDate)]}s.`) : 'Select a date to view slots.'}
+                    {selectedDate ? (isBefore(selectedDate, startOfDay(new Date())) ? "Cannot manage slots for past dates." : `No 60-minute time slots assigned by admin for you on ${daysOfWeek[getDay(selectedDate)]}s.`) : 'Select a date to view slots.'}
                  </p>
              ) : (
                  <div className="overflow-x-auto border rounded-md max-h-96"> {/* Add max-height and scroll */}
@@ -341,6 +343,3 @@ export function ProfessorInterface() {
     </div>
   );
 }
-
-
-    
