@@ -377,31 +377,31 @@ export function StudentInterface() {
                        </TableRow>
                      </TableHeader>
                      <TableBody>
-                         {bookedSlots.map((slot) => {
-                             const lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`);
-                             // Check if cancellation is allowed (more than 24 hours before)
-                             const canCancel = differenceInHours(lessonDateTime, new Date()) >= 24;
+                       {bookedSlots.map((slot) => {
+                         const lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`);
+                         // Check if cancellation is allowed (more than 24 hours before)
+                         const canCancel = differenceInHours(lessonDateTime, new Date()) >= 24;
 
-                             return (
-                                 <TableRow key={`booked-${slot.id}`}>
-                                     <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
-                                     <TableCell>{slot.time}</TableCell>
-                                     <TableCell>{slot.professorEmail}</TableCell>
-                                     <TableCell className="text-center">{slot.duration} min</TableCell>
-                                     <TableCell className="text-center">
-                                         <Button
-                                             onClick={() => cancelBooking(slot)}
-                                             variant="destructive"
-                                             size="sm"
-                                             disabled={!canCancel} // Disable if within 24 hours
-                                             title={!canCancel ? "Cannot cancel less than 24 hours before" : "Cancel this booking"}
-                                         >
-                                             Cancel Booking
-                                         </Button>
-                                     </TableCell>
-                                 </TableRow>
-                             );
-                         })}
+                         return (
+                           <TableRow key={`booked-${slot.id}`}>
+                             <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
+                             <TableCell>{slot.time}</TableCell>
+                             <TableCell>{slot.professorEmail}</TableCell>
+                             <TableCell className="text-center">{slot.duration} min</TableCell>
+                             <TableCell className="text-center">
+                               <Button
+                                 onClick={() => cancelBooking(slot)}
+                                 variant="destructive"
+                                 size="sm"
+                                 disabled={!canCancel} // Disable if within 24 hours
+                                 title={!canCancel ? "Cannot cancel less than 24 hours before" : "Cancel this booking"}
+                               >
+                                 Cancel Booking
+                               </Button>
+                             </TableCell>
+                           </TableRow>
+                         );
+                       })}
                      </TableBody>
                    </Table>
                  </div>
@@ -412,3 +412,4 @@ export function StudentInterface() {
     </div>
   );
 }
+
