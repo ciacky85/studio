@@ -13,128 +13,167 @@ import {
 import {Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 import {sendEmail} from '@/services/email'; // Import the email service
 import {useToast} from "@/hooks/use-toast";
+import type { UserData } from '@/types/user'; // Assuming UserData type is defined
 
-// Mocked pending registrations (replace with actual data source)
+// Mocked pending registrations (replace with actual data source if needed)
 const mockedPendingRegistrations = [
-  {id: 1, name: 'John Doe', role: 'student', email: 'john.doe@example.com'},
-  {id: 2, name: 'Jane Smith', role: 'professor', email: 'jane.smith@example.com'},
-  {id: 3, name: 'Test User', role: 'student', email: 'test@example.com'},
+    // Example structure, actual data loaded from localStorage
+    // { id: 1, name: 'John Doe', role: 'student', email: 'john.doe@example.com' },
 ];
 
 export function AdminInterface() {
-  const [pendingRegistrations, setPendingRegistrations] = useState(mockedPendingRegistrations);
-  const [classrooms, setClassrooms] = useState([
-    {id: 1, name: 'Room 101', availability: 'Mon 8:00-10:00, Tue 14:00-16:00'},
-    {id: 2, name: 'Room 102', availability: 'Wed 9:00-11:00, Fri 13:00-15:00'},
-  ]);
-
-  // Sample list of professors (replace with actual data)
-  //const professors = ['Professor A', 'Professor B', 'Professor C'];
+  const [pendingRegistrations, setPendingRegistrations] = useState<{ id: number; name: string; role: string; email: string }[]>([]);
   const [professors, setProfessors] = useState<string[]>([]);
-
-  useEffect(() => {
-    // Load professors from local storage
-    const storedProfessors: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) {
-        try {
-          const userData = JSON.parse(localStorage.getItem(key) || '{}');
-          if (userData.role === 'professor') {
-            storedProfessors.push(key);
-          }
-        } catch (e) {
-          console.error("Could not parse local storage", e);
-        }
-      }
-    }
-    setProfessors(storedProfessors);
-  }, []);
-
-  // Generate time slots from 7:00 to 23:00 in 30-minute intervals
-  const timeSlots = generateTimeSlots();
-
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-
-  // State to hold the schedule (classroom, day, time, professor)
-  const [schedule, setSchedule] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    // Load schedule from local storage on component mount
-    const storedSchedule = localStorage.getItem('classroomSchedule');
-    if (storedSchedule) {
-      setSchedule(JSON.parse(storedSchedule));
-    }
-  }, []);
-
-  useEffect(() => {
-    // Save schedule to local storage whenever it changes
-    localStorage.setItem('classroomSchedule', JSON.stringify(schedule));
-  }, [schedule]);
+  const [schedule, setSchedule] = useState<Record<string, string>>({}); // Key: "Day-Time", Value: Professor Email or ""
 
   const {toast} = useToast();
 
-  const approveRegistration = async (id: number) => {
-    const registration = pendingRegistrations.find((reg) => reg.id === id);
-    if (registration) {
-      try {
-        // Remove from pending registrations from local storage
-        localStorage.removeItem(registration.email);
+  // Load pending registrations and professors from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const loadedPending: { id: number; name: string; role: string; email: string }[] = [];
+      const loadedProfessors: string[] = [];
+      let idCounter = 1;
 
-        // Send approval email
-        await sendEmail({
-          to: registration.email,
-          subject: 'Registration Approved',
-          html: '<p>Your registration has been approved. You can now log in.</p>',
-        });
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key !== 'classroomSchedule' && key !== 'availableSlots' && key !== 'loggedInUser') { // Avoid parsing non-user data
+          try {
+            const item = localStorage.getItem(key);
+            if (item) {
+              const userData: UserData & { password?: string } = JSON.parse(item); // Added password to type assertion for safety
 
-        // Remove from pending registrations
-        setPendingRegistrations(pendingRegistrations.filter((reg) => reg.id !== id));
+              // Check if it looks like a user registration entry
+              if (userData.role && (userData.approved === false || userData.approved === undefined)) {
+                 // Assume name is derivable from email or add a name field during registration if needed
+                 const name = key.split('@')[0]; // Simple name extraction from email
+                 loadedPending.push({ id: idCounter++, name: name, role: userData.role, email: key });
+              }
 
-        toast({
-          title: "Registration Approved",
-          description: `Registration for ${registration.email} has been approved.`,
-        });
-      } catch (error) {
-        console.error("Error sending approval email:", error);
-        toast({
-          variant: "destructive",
-          title: "Error Approving Registration",
-          description: `Failed to send approval email to ${registration.email}.`,
-        });
+              if (userData.role === 'professor' && userData.approved !== false) {
+                loadedProfessors.push(key); // Use email (key) as professor identifier
+              }
+            }
+          } catch (e) {
+            console.warn("Could not parse item from local storage for key (might not be user data):", key, e);
+          }
+        }
+      }
+      setPendingRegistrations(loadedPending);
+      setProfessors(loadedProfessors);
+    }
+  }, []); // Run only on mount
+
+
+  // Load schedule from local storage on component mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedSchedule = localStorage.getItem('classroomSchedule');
+      if (storedSchedule) {
+        try {
+          const parsedSchedule = JSON.parse(storedSchedule);
+           // Basic validation: Check if it's an object
+           if (typeof parsedSchedule === 'object' && parsedSchedule !== null) {
+               setSchedule(parsedSchedule);
+           } else {
+                console.warn("Invalid schedule format found in localStorage. Initializing empty schedule.");
+                setSchedule({}); // Initialize empty if format is wrong
+           }
+        } catch (e) {
+          console.error("Failed to parse classroomSchedule from localStorage", e);
+           setSchedule({}); // Initialize empty on parsing error
+          // Optionally clear the invalid data
+          // localStorage.removeItem('classroomSchedule');
+        }
+      } else {
+          setSchedule({}); // Initialize empty if nothing is stored
+      }
+    }
+  }, []); // Empty dependency array ensures this runs only on mount
+
+  // Save schedule to local storage whenever it changes
+  useEffect(() => {
+     // Only save if schedule is not empty, prevents overwriting on initial load before data is ready
+     if (typeof window !== 'undefined' && Object.keys(schedule).length > 0) {
+       localStorage.setItem('classroomSchedule', JSON.stringify(schedule));
+     }
+  }, [schedule]); // Dependency array includes schedule
+
+  const approveRegistration = async (email: string) => {
+    if (typeof window !== 'undefined') {
+      const userDataString = localStorage.getItem(email);
+      if (userDataString) {
+        try {
+          const userData = JSON.parse(userDataString);
+          userData.approved = true; // Mark as approved
+          localStorage.setItem(email, JSON.stringify(userData)); // Update in localStorage
+
+          // Send approval email
+          await sendEmail({
+            to: email,
+            subject: 'Registration Approved',
+            html: '<p>Your registration has been approved. You can now log in.</p>',
+          });
+
+          // Remove from pending registrations state
+          setPendingRegistrations(prev => prev.filter((reg) => reg.email !== email));
+
+          // Add to professors list if role is professor
+          if (userData.role === 'professor') {
+            setProfessors(prev => [...prev, email]);
+          }
+
+          toast({
+            title: "Registration Approved",
+            description: `Registration for ${email} has been approved.`,
+          });
+        } catch (error) {
+           console.error("Error processing approval for:", email, error);
+           toast({
+             variant: "destructive",
+             title: "Error Approving Registration",
+             description: `Failed to approve registration for ${email}. Error: ${error instanceof Error ? error.message : String(error)}`,
+           });
+        }
+      } else {
+         toast({ variant: "destructive", title: "Error", description: "User data not found." });
       }
     }
   };
 
-  const rejectRegistration = async (id: number) => {
-    const registration = pendingRegistrations.find((reg) => reg.id === id);
-    if (registration) {
-      try {
-        // Remove registration from local storage
-        localStorage.removeItem(registration.email);
+  const rejectRegistration = async (email: string) => {
+     if (typeof window !== 'undefined') {
+       const registration = pendingRegistrations.find((reg) => reg.email === email);
+       if (registration) {
+         try {
+           localStorage.removeItem(email); // Remove registration from local storage
 
-        // Send rejection email
-        await sendEmail({
-          to: registration.email,
-          subject: 'Registration Rejected',
-          html: '<p>Your registration has been rejected.</p>',
-        });
-        // Remove from pending registrations
-        setPendingRegistrations(pendingRegistrations.filter((reg) => reg.id !== id));
-        toast({
-          title: "Registration Rejected",
-          description: `Registration for ${registration.email} has been rejected.`,
-        });
-      } catch (error) {
-        console.error("Error sending rejection email:", error);
-        toast({
-          variant: "destructive",
-          title: "Error Rejecting Registration",
-          description: `Failed to send rejection email to ${registration.email}.`,
-        });
-      }
-    }
-  };
+           // Send rejection email
+           await sendEmail({
+             to: email,
+             subject: 'Registration Rejected',
+             html: '<p>Your registration has been rejected.</p>',
+           });
+           // Remove from pending registrations state
+           setPendingRegistrations(prev => prev.filter((reg) => reg.email !== email));
+           toast({
+             title: "Registration Rejected",
+             description: `Registration for ${email} has been rejected.`,
+           });
+         } catch (error) {
+            console.error("Error rejecting registration for:", email, error);
+            toast({
+              variant: "destructive",
+              title: "Error Rejecting Registration",
+              description: `Failed to send rejection email to ${email}. Error: ${error instanceof Error ? error.message : String(error)}`,
+            });
+         }
+       } else {
+            toast({ variant: "destructive", title: "Error", description: "Registration not found in pending list." });
+       }
+     }
+   };
+
   // Function to generate time slots
   function generateTimeSlots() {
     const slots = [];
@@ -146,91 +185,126 @@ export function AdminInterface() {
     return slots;
   }
 
-  const handleProfessorChange = (day: string, time: string, professor: string) => {
-    setSchedule({...schedule, [`${day}-${time}`]: professor});
+  const timeSlots = generateTimeSlots();
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+  const handleProfessorChange = (day: string, time: string, professorEmail: string) => {
+    const key = `${day}-${time}`;
+    setSchedule(prevSchedule => ({
+        ...prevSchedule,
+        [key]: professorEmail === 'unassigned' ? '' : professorEmail // Store empty string for unassigned
+    }));
+    // The useEffect watching `schedule` will handle saving to localStorage
   };
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <Card>
+    <div className="flex flex-col gap-4 p-4 w-full">
+      <Card className="w-full">
         <CardHeader>
           <CardTitle>Admin Interface</CardTitle>
           <CardDescription>Manage user registrations and classroom availability.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
+          {/* Use w-full or specific width like max-w-4xl etc. */}
           <Tabs defaultValue="classrooms" className="w-full">
-            <TabsList>
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
               <TabsTrigger value="users">Users</TabsTrigger>
             </TabsList>
             <TabsContent value="classrooms">
-              <h3>Classroom Schedule Management</h3>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-24">Time</TableHead>
-                      {days.map((day) => (
-                        <TableHead key={day} className="w-40">{day}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {timeSlots.map((time) => (
-                      <TableRow key={time}>
-                        <TableCell className="font-medium">{time}</TableCell>
-                        {days.map((day) => (
-                          <TableCell key={`${day}-${time}`}>
-                            <Select onValueChange={(professor) => handleProfessorChange(day, time, professor)}>
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Assign Professor">
-                                  {schedule[`${day}-${time}`] || "Assign Professor"}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                {professors.map((professor) => (
-                                  <SelectItem key={professor} value={professor}>
-                                    {professor}
-                                  </SelectItem>
-                                ))}
-                                <SelectItem value="unassigned">Unassigned</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <Card>
+                 <CardHeader>
+                     <CardTitle>Classroom Schedule</CardTitle>
+                     <CardDescription>Assign professors to available time slots.</CardDescription>
+                 </CardHeader>
+                 <CardContent>
+                     <div className="overflow-x-auto">
+                         <Table>
+                             <TableHeader>
+                                 <TableRow>
+                                     <TableHead className="min-w-[80px] w-24 sticky left-0 bg-background z-10">Time</TableHead>
+                                     {days.map((day) => (
+                                         <TableHead key={day} className="min-w-[200px] w-40">{day}</TableHead>
+                                     ))}
+                                 </TableRow>
+                             </TableHeader>
+                             <TableBody>
+                                 {timeSlots.map((time) => (
+                                     <TableRow key={time}>
+                                         <TableCell className="font-medium sticky left-0 bg-background z-10">{time}</TableCell>
+                                         {days.map((day) => {
+                                            const scheduleKey = `${day}-${time}`;
+                                            const assignedProfessor = schedule[scheduleKey] || ''; // Default to empty string if undefined
+                                            return (
+                                                <TableCell key={scheduleKey}>
+                                                    <Select
+                                                        value={assignedProfessor || 'unassigned'} // Ensure value corresponds to an item or 'unassigned'
+                                                        onValueChange={(value) => handleProfessorChange(day, time, value)}
+                                                    >
+                                                        <SelectTrigger className="w-full">
+                                                            {/* Display professor email or placeholder */}
+                                                            <SelectValue placeholder="Assign Professor">
+                                                                {assignedProfessor || "Assign Professor"}
+                                                            </SelectValue>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="unassigned">Unassigned</SelectItem>
+                                                            {professors.map((profEmail) => (
+                                                                <SelectItem key={profEmail} value={profEmail}>
+                                                                    {profEmail}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </TableCell>
+                                            );
+                                         })}
+                                     </TableRow>
+                                 ))}
+                             </TableBody>
+                         </Table>
+                     </div>
+                 </CardContent>
+              </Card>
             </TabsContent>
             <TabsContent value="users">
-              <h3>Pending Registrations</h3>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingRegistrations.map((reg) => (
-                      <TableRow key={reg.id}>
-                        <TableCell>{reg.name}</TableCell>
-                        <TableCell>{reg.role}</TableCell>
-                        <TableCell>{reg.email}</TableCell>
-                        <TableCell>
-                          <Button onClick={() => approveRegistration(reg.id)}>Approve</Button>
-                          <Button onClick={() => rejectRegistration(reg.id)} variant="destructive">Reject</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+             <Card>
+                 <CardHeader>
+                     <CardTitle>Pending Registrations</CardTitle>
+                     <CardDescription>Approve or reject new user registrations.</CardDescription>
+                 </CardHeader>
+                 <CardContent>
+                     <div className="overflow-x-auto">
+                         {pendingRegistrations.length > 0 ? (
+                             <Table>
+                                 <TableHeader>
+                                     <TableRow>
+                                         <TableHead>Name</TableHead>
+                                         <TableHead>Role</TableHead>
+                                         <TableHead>Email</TableHead>
+                                         <TableHead>Actions</TableHead>
+                                     </TableRow>
+                                 </TableHeader>
+                                 <TableBody>
+                                     {pendingRegistrations.map((reg) => (
+                                         <TableRow key={reg.id}>
+                                             <TableCell>{reg.name}</TableCell>
+                                             <TableCell>{reg.role}</TableCell>
+                                             <TableCell>{reg.email}</TableCell>
+                                             <TableCell className="flex gap-2">
+                                                 <Button onClick={() => approveRegistration(reg.email)} size="sm">Approve</Button>
+                                                 <Button onClick={() => rejectRegistration(reg.email)} variant="destructive" size="sm">Reject</Button>
+                                             </TableCell>
+                                         </TableRow>
+                                     ))}
+                                 </TableBody>
+                             </Table>
+                         ) : (
+                             <p>No pending registrations.</p>
+                         )}
+                     </div>
+                 </CardContent>
+             </Card>
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -238,4 +312,3 @@ export function AdminInterface() {
     </div>
   );
 }
-
