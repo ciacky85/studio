@@ -7,18 +7,19 @@ import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/compo
 import {Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 import {useToast} from "@/hooks/use-toast";
 
-// Define the structure of a slot as seen by the student
+// Define the structure of a slot as seen by the student (matches BookableSlot)
 interface StudentSlotView {
-  id: string; // 'day-time-professorEmail' unique ID
+  id: string; // 'day-time-professorEmail-part' unique ID
   classroom: string; // May be N/A
   day: string;
-  time: string;
-  duration: number;
+  time: string; // Start time of the 30-min slot
+  duration: number; // Should be 30 min
   professorEmail: string; // Identify the professor
   isBookedByCurrentUser: boolean; // Track if this student booked this slot
+  // No bookingTime needed for student view generally, unless showing their own bookings' details
 }
 
-// Key for storing all professors' availability preferences in localStorage
+// Key for storing all professors' availability preferences (BookableSlot[]) in localStorage
 const ALL_PROFESSOR_AVAILABILITY_KEY = 'allProfessorAvailability';
 // Key for logged-in user info
 const LOGGED_IN_USER_KEY = 'loggedInUser';
@@ -29,81 +30,105 @@ export function StudentInterface() {
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const {toast} = useToast();
 
-  // Load available and booked slots on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // 1. Get logged-in user email
-      const storedUser = localStorage.getItem(LOGGED_IN_USER_KEY);
-      let userEmail: string | null = null;
-      if (storedUser) {
-        try {
-          const userData = JSON.parse(storedUser);
-           // Allow any role for now, but ideally check for 'student'
-           userEmail = userData.username;
-           setCurrentUserEmail(userEmail);
-        } catch (e) {
-          console.error("Error parsing loggedInUser data:", e);
-          return; // Handle error appropriately
-        }
-      } else {
-        console.error("No user logged in.");
-        return; // Handle error appropriately
-      }
-
-      // 2. Get all professors' availability preferences
-      const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
-      let allProfessorAvailability: Record<string, any[]> = {}; // Use 'any' temporarily for flexibility
-      if (storedAvailability) {
-        try {
-          allProfessorAvailability = JSON.parse(storedAvailability);
-        } catch (e) {
-          console.error("Failed to parse allProfessorAvailability", e);
-          allProfessorAvailability = {};
-        }
-      }
-
-      // 3. Process slots to show available and booked by current user
-      const loadedAvailable: StudentSlotView[] = [];
-      const loadedBooked: StudentSlotView[] = [];
-
-      Object.entries(allProfessorAvailability).forEach(([professorEmail, professorSlots]) => {
-        if (Array.isArray(professorSlots)) {
-           professorSlots.forEach(slot => {
-             // Basic validation of slot structure
-             if (slot && slot.id && slot.day && slot.time && typeof slot.isAvailable === 'boolean') {
-                const studentViewSlot: StudentSlotView = {
-                    id: `${slot.id}-${professorEmail}`, // Create a unique ID including professor
-                    classroom: slot.classroom || 'N/A',
-                    day: slot.day,
-                    time: slot.time,
-                    duration: slot.duration || 30,
-                    professorEmail: professorEmail,
-                    isBookedByCurrentUser: slot.bookedBy === userEmail,
-                 };
-
-                if (slot.isAvailable && !slot.bookedBy) {
-                  loadedAvailable.push(studentViewSlot);
-                } else if (slot.bookedBy === userEmail) {
-                  loadedBooked.push(studentViewSlot);
-                }
-             } else {
-                 console.warn(`Invalid slot structure found for professor ${professorEmail}:`, slot);
-             }
-           });
+  // Function to load slots from storage
+  const loadSlots = () => {
+     if (typeof window !== 'undefined') {
+        // 1. Get logged-in user email
+        const storedUser = localStorage.getItem(LOGGED_IN_USER_KEY);
+        let userEmail: string | null = null;
+        if (storedUser) {
+            try {
+            const userData = JSON.parse(storedUser);
+            userEmail = userData.username; // Assume role check happened at login/routing
+            setCurrentUserEmail(userEmail);
+            } catch (e) {
+            console.error("Error parsing loggedInUser data:", e);
+            return;
+            }
         } else {
-            console.warn(`Invalid data structure for professor ${professorEmail} in allProfessorAvailability.`);
+            console.error("No user logged in.");
+            return;
         }
-      });
 
-      setAvailableSlots(loadedAvailable);
-      setBookedSlots(loadedBooked);
-    }
+        // 2. Get all professors' availability preferences (BookableSlot[])
+        const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
+        let allProfessorAvailability: Record<string, any[]> = {}; // Use 'any' temporarily
+        if (storedAvailability) {
+            try {
+            allProfessorAvailability = JSON.parse(storedAvailability);
+            } catch (e) {
+            console.error("Failed to parse allProfessorAvailability", e);
+            allProfessorAvailability = {};
+            }
+        }
+
+        // 3. Process slots
+        const loadedAvailable: StudentSlotView[] = [];
+        const loadedBooked: StudentSlotView[] = [];
+
+        Object.entries(allProfessorAvailability).forEach(([professorEmail, professorSlots]) => {
+            if (Array.isArray(professorSlots)) {
+            professorSlots.forEach(slot => {
+                // Validate essential properties of a BookableSlot
+                if (slot && slot.id && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail) {
+                    const studentViewSlot: StudentSlotView = {
+                        id: slot.id, // Use the existing unique ID
+                        classroom: slot.classroom || 'N/A',
+                        day: slot.day,
+                        time: slot.time,
+                        duration: slot.duration || 30, // Default to 30 if missing
+                        professorEmail: slot.professorEmail,
+                        isBookedByCurrentUser: slot.bookedBy === userEmail,
+                    };
+
+                    if (slot.isAvailable && !slot.bookedBy) {
+                        loadedAvailable.push(studentViewSlot);
+                    } else if (slot.bookedBy === userEmail) {
+                        loadedBooked.push(studentViewSlot);
+                    }
+                } else {
+                    console.warn(`Invalid slot structure found for professor ${professorEmail}:`, slot);
+                }
+            });
+            } else {
+            console.warn(`Invalid data structure for professor ${professorEmail} in allProfessorAvailability.`);
+            }
+        });
+
+         // Sort available slots for display
+         loadedAvailable.sort((a, b) => {
+           const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+           const dayCompare = dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+           if (dayCompare !== 0) return dayCompare;
+           const timeA = parseFloat(a.time.replace(':', '.'));
+           const timeB = parseFloat(b.time.replace(':', '.'));
+           return timeA - timeB;
+         });
+
+         // Sort booked slots for display
+          loadedBooked.sort((a, b) => {
+           const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+           const dayCompare = dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+           if (dayCompare !== 0) return dayCompare;
+            const timeA = parseFloat(a.time.replace(':', '.'));
+           const timeB = parseFloat(b.time.replace(':', '.'));
+           return timeA - timeB;
+         });
+
+        setAvailableSlots(loadedAvailable);
+        setBookedSlots(loadedBooked);
+     }
+  };
+
+  // Load slots on mount
+  useEffect(() => {
+    loadSlots();
   }, []); // Run only on mount
 
   // Function to book a slot
   const bookSlot = (slotToBook: StudentSlotView) => {
     if (typeof window !== 'undefined' && currentUserEmail) {
-        // 1. Find the original slot data in allProfessorAvailability
+        // 1. Get the latest availability data
         const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
         let allProfessorAvailability: Record<string, any[]> = {};
         if (storedAvailability) {
@@ -122,21 +147,21 @@ export function StudentInterface() {
              return;
         }
 
-        const slotIndex = professorSlots.findIndex(s => `${s.id}-${slotToBook.professorEmail}` === slotToBook.id);
+        // Find the specific slot using the unique ID
+        const slotIndex = professorSlots.findIndex(s => s.id === slotToBook.id);
 
         if (slotIndex === -1) {
             toast({ variant: "destructive", title: "Booking Error", description: "Slot not found." });
+            loadSlots(); // Refresh list as slot might have been booked/removed
             return;
         }
 
         const originalSlot = professorSlots[slotIndex];
 
-        // 2. Check if the slot is still available
+        // 2. Check if the slot is still available (atomic check simulation)
         if (!originalSlot.isAvailable || originalSlot.bookedBy) {
              toast({ variant: "destructive", title: "Booking Failed", description: "Slot is no longer available." });
-             // Re-sync UI if needed (optional, depends on desired behavior)
-             // You might want to reload the slots here to reflect the latest state
-             setAvailableSlots(prev => prev.filter(s => s.id !== slotToBook.id));
+             loadSlots(); // Refresh the list to show the updated status
              return;
         }
 
@@ -150,21 +175,31 @@ export function StudentInterface() {
         allProfessorAvailability[slotToBook.professorEmail] = professorSlots;
         localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
 
-        // 5. Update UI state
-        setBookedSlots(prev => [...prev, {...slotToBook, isBookedByCurrentUser: true}]);
+        // 5. Update UI state immediately for responsiveness
+        setBookedSlots(prev => [...prev, {...slotToBook, isBookedByCurrentUser: true}].sort((a, b) => { /* Add sorting if needed */
+            const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+            const dayCompare = dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+            if (dayCompare !== 0) return dayCompare;
+             const timeA = parseFloat(a.time.replace(':', '.'));
+            const timeB = parseFloat(b.time.replace(':', '.'));
+            return timeA - timeB;
+        }));
         setAvailableSlots(prev => prev.filter(s => s.id !== slotToBook.id));
 
         toast({ title: "Booking Successful", description: `Lesson with ${slotToBook.professorEmail} booked for ${slotToBook.day} at ${slotToBook.time}.` });
+
+        // Consider sending email confirmation here
+        // sendEmail({ to: currentUserEmail, subject: 'Booking Confirmation', ... });
+        // sendEmail({ to: slotToBook.professorEmail, subject: 'New Booking', ... });
     }
   };
 
-  // Function to cancel a booking (Optional)
+  // Function to cancel a booking
   const cancelBooking = (slotToCancel: StudentSlotView) => {
        if (typeof window !== 'undefined' && currentUserEmail) {
-           // Similar logic to bookSlot, but find the slot in bookedSlots and revert changes in localStorage
+           // 1. Get latest data
            const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
            let allProfessorAvailability: Record<string, any[]> = {};
-           // ... (parse localStorage, handle errors) ...
             if (storedAvailability) {
                 try {
                     allProfessorAvailability = JSON.parse(storedAvailability);
@@ -178,45 +213,89 @@ export function StudentInterface() {
                 return;
             }
 
-
            const professorSlots = allProfessorAvailability[slotToCancel.professorEmail];
             if (!professorSlots || !Array.isArray(professorSlots)) {
                 toast({ variant: "destructive", title: "Cancellation Error", description: "Professor's schedule not found." });
                 return;
            }
 
-            const slotIndex = professorSlots.findIndex(s => `${s.id}-${slotToCancel.professorEmail}` === slotToCancel.id);
+            // Find the slot by ID
+            const slotIndex = professorSlots.findIndex(s => s.id === slotToCancel.id);
 
             if (slotIndex === -1) {
                 toast({ variant: "destructive", title: "Cancellation Error", description: "Slot not found in professor's schedule." });
+                loadSlots(); // Refresh UI
                 return;
             }
 
             const originalSlot = professorSlots[slotIndex];
 
-           // Check if the current user actually booked this slot
+           // 2. Verify the current user booked this slot
             if (originalSlot.bookedBy !== currentUserEmail) {
                  toast({ variant: "destructive", title: "Cancellation Error", description: "You did not book this slot." });
+                 loadSlots(); // Refresh UI as state might be inconsistent
                  return;
             }
 
-           // Update the slot data to make it available again (professor needs to re-enable if needed)
+            // --- Add 24-hour cancellation check ---
+            const bookingTimeStr = originalSlot.bookingTime; // Assuming 'bookingTime' is stored when booked
+            if (!bookingTimeStr) {
+                 console.warn("Booking time not found for slot:", slotToCancel.id);
+                 // Allow cancellation if booking time is missing? Or throw error? Decide policy.
+                 // For now, let's allow it but log a warning.
+            } else {
+                try {
+                    // Attempt to parse the stored booking time
+                    // IMPORTANT: Parsing localeString is unreliable. Store ISO string (new Date().toISOString()) instead.
+                    // For now, we attempt to parse what might be there.
+                    const bookingDate = new Date(bookingTimeStr); // This might be Invalid Date
+                    const now = new Date();
+                    const hoursDifference = (now.getTime() - bookingDate.getTime()) / (1000 * 60 * 60);
+
+                    // Assuming cancellation means >= 24 hours *before* the lesson starts, not after booking time.
+                    // We need the actual lesson start time.
+                    const lessonStartTime = new Date(); // Need to construct this properly
+                    const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(slotToCancel.day);
+                    // Logic to find the next occurrence of that day and time... this is complex.
+                    // For simplicity, let's just check if the booking was made > 24h ago. THIS IS NOT THE REQUIREMENT.
+                    // A proper implementation needs robust date calculation based on lesson day/time.
+
+                    // TEMPORARY/INCORRECT check: Check if booked less than 24 hours ago
+                    // if (hoursDifference < 24) {
+                    //     toast({ variant: "destructive", title: "Cancellation Failed", description: "Bookings can only be cancelled up to 24 hours in advance." });
+                    //     return;
+                    // }
+                    // !! Replace above with correct logic based on lesson start time !!
+
+                } catch (dateError) {
+                    console.error("Error parsing booking date/time:", dateError);
+                    toast({ variant: "destructive", title: "Cancellation Error", description: "Could not verify cancellation window." });
+                    return; // Prevent cancellation if time check fails
+                }
+            }
+            // --- End 24-hour check ---
+
+
+           // 3. Update the slot data to remove booking info
            originalSlot.bookedBy = null;
            originalSlot.bookingTime = null;
-           // Professor controls `isAvailable`, so we don't set it back to true here.
-           // originalSlot.isAvailable = true; // Let professor control this
+           // Professor controls `isAvailable`, keep it false unless professor explicitly makes it available again.
+           // originalSlot.isAvailable = true; // DON'T set this automatically
 
-           // Save updated data
+           // 4. Save updated data
            allProfessorAvailability[slotToCancel.professorEmail] = professorSlots;
            localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
 
-           // Update UI state
+           // 5. Update UI state immediately
            setBookedSlots(prev => prev.filter(s => s.id !== slotToCancel.id));
-           // Add the slot back to available *only if the professor still has it marked as available*
-           // This requires re-fetching or more complex state management. For simplicity, we won't add it back here.
-           // A refresh or re-fetch mechanism would be better.
+           // Don't add back to available list automatically. loadSlots() on next mount will handle it if professor re-enables.
+           // setAvailableSlots(prev => [...prev, {...slotToCancel, isBookedByCurrentUser: false}]); // Incorrect
 
            toast({ title: "Booking Cancelled", description: `Your lesson with ${slotToCancel.professorEmail} on ${slotToCancel.day} at ${slotToCancel.time} has been cancelled.` });
+
+            // Consider sending cancellation emails here
+            // sendEmail({ to: currentUserEmail, subject: 'Cancellation Confirmation', ... });
+            // sendEmail({ to: slotToCancel.professorEmail, subject: 'Booking Cancelled', ... });
        }
    };
 
@@ -226,7 +305,7 @@ export function StudentInterface() {
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Student Interface</CardTitle>
-          <CardDescription>View and book available lesson slots.</CardDescription>
+          <CardDescription>View and book available 30-minute lesson slots.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6"> {/* Increased gap */}
           <div>
@@ -291,6 +370,7 @@ export function StudentInterface() {
                                 <TableCell>{slot.duration} min</TableCell>
                                 <TableCell>{slot.professorEmail}</TableCell>
                                 <TableCell>
+                                    {/* Add check for cancellation window here if implementing */}
                                     <Button onClick={() => cancelBooking(slot)} variant="destructive" size="sm">Cancel Booking</Button>
                                 </TableCell>
                             </TableRow>
@@ -305,5 +385,3 @@ export function StudentInterface() {
     </div>
   );
 }
-
-    

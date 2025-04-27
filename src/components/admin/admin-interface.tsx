@@ -44,7 +44,7 @@ export function AdminInterface() {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         // Basic check to avoid parsing non-user/non-schedule items
-        if (key && !['classroomSchedule', 'availableSlots', 'loggedInUser'].includes(key)) {
+        if (key && !['classroomSchedule', 'availableSlots', 'loggedInUser', 'allProfessorAvailability'].includes(key)) { // Exclude allProfessorAvailability
           try {
             const item = localStorage.getItem(key);
             if (item) {
@@ -197,14 +197,13 @@ export function AdminInterface() {
      }
    };
 
-  // Function to generate time slots
+  // Function to generate time slots (HOURLY)
   function generateTimeSlots() {
     const slots = [];
     for (let hour = 7; hour <= 22; hour++) {
       slots.push(`${String(hour).padStart(2, '0')}:00`);
-      slots.push(`${String(hour).padStart(2, '0')}:30`);
     }
-    slots.push('23:00'); // Add 23:00
+    // No need to add 23:00 separately if the loop includes <= 22
     return slots;
   }
 
