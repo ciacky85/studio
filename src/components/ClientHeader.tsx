@@ -3,9 +3,9 @@
 
 import {Button} from '@/components/ui/button';
 import Link from 'next/link';
-import {useRouter} from 'next/navigation';
+import {useRouter} from 'next/navigation'; // Correct import
 import {useEffect, useState} from 'react';
-import {usePathname} from 'next/navigation';
+import {usePathname} from 'next/navigation'; // Correct import
 
 const ClientHeader = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -14,6 +14,7 @@ const ClientHeader = () => {
 
   // Function to check login status
   const checkLoginStatus = () => {
+    // Ensure this runs only client-side
     if (typeof window !== 'undefined') {
       const storedUser = localStorage.getItem('loggedInUser');
       setIsLoggedIn(!!storedUser); // Set based on whether storedUser exists
@@ -24,9 +25,13 @@ const ClientHeader = () => {
     checkLoginStatus(); // Check immediately on mount/render
 
     // Add an event listener for storage changes to handle login/logout in other tabs/windows
-    const handleStorageChange = () => {
-      checkLoginStatus();
+    const handleStorageChange = (event: StorageEvent) => {
+       // Check if the change happened on the 'loggedInUser' key or if any key was cleared
+       if (event.key === 'loggedInUser' || event.key === null) {
+            checkLoginStatus();
+       }
     };
+
 
     window.addEventListener('storage', handleStorageChange);
 
@@ -45,9 +50,8 @@ const ClientHeader = () => {
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('loggedInUser');
-      setIsLoggedIn(false);
-      router.push('/'); // Redirect to the login page
-      // No need to force re-render, setIsLoggedIn handles it.
+      setIsLoggedIn(false); // Update state immediately
+      router.replace('/'); // Use replace to redirect to login page and clear history stack
     }
   };
 
