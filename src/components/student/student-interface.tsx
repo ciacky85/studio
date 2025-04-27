@@ -36,6 +36,11 @@ export function StudentInterface() {
    // Function to sort slots consistently by date then time
    const sortSlots = (slots: StudentSlotView[]) => {
       return slots.sort((a, b) => {
+          // Defensive check for invalid slot data before sorting
+          if (!a?.date || !b?.date || !a?.time || !b?.time) {
+              console.warn('Attempted to sort invalid slot data:', a, b);
+              return 0; // Avoid erroring, maintain relative order
+          }
           const dateCompare = a.date.localeCompare(b.date);
           if (dateCompare !== 0) return dateCompare;
           // Simple string comparison works for HH:00 format
@@ -116,9 +121,13 @@ export function StudentInterface() {
              // 2. It's not booked by anyone
              // 3. The slot start time is not in the past
              if (slot.isAvailable && !slot.bookedBy) { // Removed date check here
-                 const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`); // Combine date and time for comparison (e.g., 2025-04-28T08:00:00)
-                 if (!isBefore(slotDateTime, new Date())) { // Check if the slot time is in the future
-                      loadedAllAvailable.push(studentViewSlot); // Add to the main available list
+                 try {
+                    const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`); // Combine date and time for comparison (e.g., 2025-04-28T08:00:00)
+                     if (!isBefore(slotDateTime, new Date())) { // Check if the slot time is in the future
+                          loadedAllAvailable.push(studentViewSlot); // Add to the main available list
+                     }
+                 } catch (parseError) {
+                     console.warn(`Could not parse date/time for slot ${slot.id}:`, parseError);
                  }
              }
 
@@ -173,7 +182,7 @@ export function StudentInterface() {
         }
 
         // Find the index of the specific slot to book
-        const slotIndex = professorSlots.findIndex(s => s.id === slotToBook.id && s.duration === 60); // Ensure it's the correct slot ID and duration
+        const slotIndex = professorSlots.findIndex(s => s && s.id === slotToBook.id && s.duration === 60); // Ensure it's the correct slot ID and duration
         if (slotIndex === -1) {
             toast({ variant: "destructive", title: "Booking Error", description: "Slot not found or invalid." });
             loadSlots(); // Refresh list in case it's outdated
@@ -182,7 +191,16 @@ export function StudentInterface() {
         const originalSlot = professorSlots[slotIndex];
 
         // 2. Check if the slot is still available (isAvailable == true) and not booked (bookedBy == null) and not in the past
-        const slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
+        let slotDateTime;
+        try {
+           slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
+        } catch (parseError) {
+            console.error("Could not parse date/time during booking check:", parseError);
+            toast({ variant: "destructive", title: "Booking Failed", description: "Invalid slot data." });
+            loadSlots();
+            return;
+        }
+
         if (!originalSlot.isAvailable || originalSlot.bookedBy || isBefore(slotDateTime, new Date())) {
              toast({ variant: "destructive", title: "Booking Failed", description: "Slot is no longer available or is in the past." });
              loadSlots(); // Refresh the list to show the current state
@@ -243,7 +261,7 @@ export function StudentInterface() {
            }
 
             // Find the specific slot index
-            const slotIndex = professorSlots.findIndex(s => s.id === slotToCancel.id && s.duration === 60);
+            const slotIndex = professorSlots.findIndex(s => s && s.id === slotToCancel.id && s.duration === 60);
             if (slotIndex === -1) {
                 toast({ variant: "destructive", title: "Cancellation Error", description: "Slot not found or invalid." });
                 loadSlots(); // Refresh UI
@@ -259,7 +277,15 @@ export function StudentInterface() {
             }
 
             // --- 24-hour cancellation policy check ---
-            const lessonStartTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
+            let lessonStartTime;
+            try {
+                lessonStartTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
+            } catch (parseError) {
+                 console.error("Could not parse date/time during cancellation check:", parseError);
+                 toast({ variant: "destructive", title: "Cancellation Failed", description: "Invalid slot data." });
+                 loadSlots();
+                 return;
+            }
             const now = new Date();
 
             if (differenceInHours(lessonStartTime, now) < 24) {
@@ -378,7 +404,14 @@ export function StudentInterface() {
                      </TableHeader>
                      <TableBody>
                        {bookedSlots.map((slot) => {
-                         const lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`);
+                        let lessonDateTime;
+                        try {
+                             lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`);
+                        } catch {
+                             // Handle cases where date/time might be invalid temporarily
+                             return <TableRow key={`booked-${slot.id}`}><TableCell colSpan={5}>Invalid slot data</TableCell></TableRow>;
+                        }
+
                          // Check if cancellation is allowed (more than 24 hours before)
                          const canCancel = differenceInHours(lessonDateTime, new Date()) >= 24;
 
