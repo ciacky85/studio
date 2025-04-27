@@ -9,7 +9,7 @@ import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/compo
 import {Input} from '@/components/ui/input';
 import Link from 'next/link';
 import {useRouter} from 'next/navigation';
-import ClientHeader from '@/components/ClientHeader'; // Import ClientHeader
+// import ClientHeader from '@/components/ClientHeader'; // Remove import - Handled by RootLayout
 
 export default function Home() {
   const [role, setRole] = useState<'admin' | 'professor' | 'student' | null>(null);
@@ -42,7 +42,7 @@ export default function Home() {
 
      // Listen for storage changes to update UI if logged in/out from another tab
      const handleStorageChange = (event: StorageEvent) => {
-        if (event.key === 'loggedInUser') {
+        if (event.key === 'loggedInUser' || event.key === null) { // Also update if storage is cleared
              checkLoginAndSetRole();
         }
      };
@@ -50,6 +50,14 @@ export default function Home() {
      return () => window.removeEventListener('storage', handleStorageChange);
 
    }, []); // Run only on mount
+
+   // Re-check role if the path changes back to '/' (e.g., after logout)
+   useEffect(() => {
+        if (typeof window !== 'undefined' && window.location.pathname === '/') {
+            checkLoginAndSetRole();
+        }
+   }, [typeof window !== 'undefined' ? window.location.pathname : '']);
+
 
   const handleLogin = () => {
     setLoginError(null); // Clear any previous error
@@ -62,14 +70,21 @@ export default function Home() {
       let userRole: 'admin' | 'professor' | 'student' | null = null;
       let userApproved = false;
 
-      if (storedUser) {
+      // Handle hardcoded admin login first
+      if (username === 'carlo.checchi@gmail.com' && password === '8257619t') {
+          userFound = true;
+          correctPassword = true;
+          userRole = 'admin';
+          userApproved = true; // Hardcoded admin is always approved
+      } else if (storedUser) { // Check localStorage for other users
         try {
           const userData = JSON.parse(storedUser);
           if (userData.password === password) {
               userFound = true;
               correctPassword = true;
               userRole = userData.role;
-              userApproved = userData.approved !== false; // Assume approved if flag is not explicitly false
+              // Ensure approved status is checked correctly (true or missing vs explicitly false)
+              userApproved = userData.approved !== false;
           } else {
               userFound = true; // User exists, but password wrong
               correctPassword = false;
@@ -89,23 +104,15 @@ export default function Home() {
         setLoginError('Account not yet approved by admin.');
       } else if (userFound && !correctPassword) {
         setLoginError('Invalid credentials.');
-      } else if (username === 'admin' && password === 'admin') { // Fallback hardcoded admin
-          setRole('admin');
-          localStorage.setItem('loggedInUser', JSON.stringify({username: username, role: 'admin'}));
-      } else if (username === 'carlo.checchi@gmail.com' && password === '8257619t') { // Fallback specific admin
-          setRole('admin');
-          localStorage.setItem('loggedInUser', JSON.stringify({username: username, role: 'admin'}));
       }
       else {
         setLoginError('Invalid credentials or user not found.');
       }
     }
 
-    // Clear fields only on error to allow retries easily
-    if (loginError) {
-      // Don't clear username/password on error to allow quick retry
-      // setUsername('');
-      // setPassword('');
+    // Clear password field on error to allow retries easily, keep username
+    if (loginError || !(userFound && correctPassword && userApproved)) { // Clear password if any error occurs
+      setPassword('');
     }
   };
 
@@ -161,7 +168,7 @@ export default function Home() {
 
   return (
     <>
-      <ClientHeader /> {/* Add ClientHeader here */}
+      {/* <ClientHeader /> */} {/* Remove ClientHeader rendering here */}
       <main className="flex flex-grow flex-col items-center justify-center p-4 sm:p-12 md:p-24">
         {renderInterface()}
       </main>

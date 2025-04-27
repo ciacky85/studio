@@ -8,8 +8,7 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/c
 import {useRouter} from 'next/navigation';
 import {sendEmail} from '@/services/email'; // Import the email service
 import {useToast} from "@/hooks/use-toast";
-// Toaster is already in RootLayout, no need to import here unless specifically needed outside layout
-import ClientHeader from '@/components/ClientHeader'; // Import ClientHeader
+// import ClientHeader from '@/components/ClientHeader'; // Remove import - Handled by RootLayout
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -19,16 +18,26 @@ export default function Register() {
   const [registrationStatus, setRegistrationStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const {toast} = useToast();
 
+  // Form validation check
   const isFormValid = email && password && role;
 
   const handleRegister = async () => {
+    // Reset status if retrying from error state
+    if (registrationStatus === 'error') {
+      setRegistrationStatus('idle');
+    }
+
+    if (!isFormValid) {
+        toast({
+            variant: "destructive",
+            title: "Missing Information",
+            description: "Please fill in all required fields.",
+        });
+        return; // Stop execution if form is invalid
+    }
+
     setRegistrationStatus('pending');
     try {
-      if (!isFormValid) {
-        // This specific error should ideally be caught by disabling the button
-        // but we keep a check for robustness.
-        throw new Error('Please fill in all required fields.');
-      }
 
       // Check if user already exists in localStorage
       if (typeof window !== 'undefined') {
@@ -40,6 +49,7 @@ export default function Register() {
         localStorage.setItem(email, JSON.stringify({password, role, approved: false}));
 
         // Send notification email to the admin (replace with actual admin email if needed)
+        // Ensure the admin email is correct and reliable
         await sendEmail({
           to: 'carlo.checchi@gmail.com', // Consider making this configurable via environment variables
           subject: 'New User Registration Pending Approval',
@@ -52,10 +62,10 @@ export default function Register() {
           description: "Your registration requires admin approval. You will be notified once approved.",
         });
 
-        // Optionally clear form fields after successful submission for better UX
-        // setEmail('');
-        // setPassword('');
-        // setRole('');
+        // Clear form fields after successful submission for better UX
+        setEmail('');
+        setPassword('');
+        setRole('');
 
         // Redirect to login page after a short delay
          setTimeout(() => router.push('/'), 3000); // Increased delay
@@ -73,15 +83,12 @@ export default function Register() {
         description: error.message || "An unexpected error occurred. Please try again.",
       });
     }
-    // No automatic reset from 'error' state here. User must interact again.
-    // 'success' state leads to redirect. 'pending' state is handled by the try/catch.
   };
 
   return (
     <>
-      <ClientHeader /> {/* Add ClientHeader here */}
+      {/* <ClientHeader /> */} {/* Remove ClientHeader rendering here */}
       <main className="flex flex-grow flex-col items-center justify-center p-4 sm:p-12 md:p-24">
-        {/* Toaster is in RootLayout */}
         <Card className="w-full max-w-md p-4">
           <CardHeader>
             <CardTitle>Register</CardTitle>
@@ -128,7 +135,6 @@ export default function Register() {
                 </SelectContent>
               </Select>
             </div>
-            {/* Display error message directly in the form as well */}
              {registrationStatus === 'error' && (
                <p className="text-sm text-destructive">Registration failed. Please check your input or try again later.</p>
              )}
