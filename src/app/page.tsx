@@ -62,13 +62,16 @@ export default function Home() {
   const handleLogin = () => {
     setLoginError(null); // Clear any previous error
 
+    // Declare variables outside the if block
+    let userFound = false;
+    let correctPassword = false;
+    let userRole: 'admin' | 'professor' | 'student' | null = null;
+    let userApproved = false;
+
     if (typeof window !== 'undefined') {
       // Check registered users in localStorage
       const storedUser = localStorage.getItem(username);
-      let userFound = false;
-      let correctPassword = false;
-      let userRole: 'admin' | 'professor' | 'student' | null = null;
-      let userApproved = false;
+
 
       // Handle hardcoded admin login first
       if (username === 'carlo.checchi@gmail.com' && password === '8257619t') {
@@ -111,6 +114,7 @@ export default function Home() {
     }
 
     // Clear password field on error to allow retries easily, keep username
+    // Now this check can safely access the variables
     if (loginError || !(userFound && correctPassword && userApproved)) { // Clear password if any error occurs
       setPassword('');
     }
