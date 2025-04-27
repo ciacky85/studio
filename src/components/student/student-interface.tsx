@@ -11,11 +11,11 @@ import { format, isBefore, startOfDay, parseISO, differenceInHours } from 'date-
 
 // Define the structure of a slot as seen by the student (now 60 min)
 interface StudentSlotView {
-  id: string; // 'YYYY-MM-DD-HH:mm-professorEmail' unique ID
+  id: string; // 'YYYY-MM-DD-HH:00-professorEmail' unique ID
   date: string; // 'YYYY-MM-DD'
   day: string; // Day of the week
-  time: string; // Start time (e.g., 08:00)
-  duration: number; // Now 60 min
+  time: string; // Start time (e.g., '08:00')
+  duration: number; // Now always 60 min
   professorEmail: string;
   isBookedByCurrentUser: boolean;
   bookingTime: string | null; // ISO string, needed for cancellation check
@@ -38,7 +38,7 @@ export function StudentInterface() {
       return slots.sort((a, b) => {
           const dateCompare = a.date.localeCompare(b.date);
           if (dateCompare !== 0) return dateCompare;
-          // Simple string comparison works for HH:mm format
+          // Simple string comparison works for HH:00 format
           return a.time.localeCompare(b.time);
       });
    };
@@ -54,12 +54,16 @@ export function StudentInterface() {
               setCurrentUserEmail(userData.username);
            } else {
                console.error("Logged in user is not a student.");
+               // Optionally redirect or show error message
+               // router.push('/');
            }
          } catch (e) {
            console.error("Error parsing loggedInUser data:", e);
          }
        } else {
          console.error("No user logged in.");
+          // Optionally redirect or show error message
+          // router.push('/');
        }
      }
    }, []);
@@ -80,6 +84,9 @@ export function StudentInterface() {
      if (storedAvailability) {
          try {
              allProfessorAvailability = JSON.parse(storedAvailability);
+              if (typeof allProfessorAvailability !== 'object' || allProfessorAvailability === null) {
+                  allProfessorAvailability = {}; // Reset if invalid
+              }
          } catch (e) {
              console.error("Failed to parse allProfessorAvailability", e);
              allProfessorAvailability = {};
@@ -91,15 +98,14 @@ export function StudentInterface() {
 
      // Iterate through each professor's list of slots
      Object.values(allProfessorAvailability).flat().forEach(slot => {
-         // Basic validation of the slot structure read from storage
-         // Check for duration explicitly
-         if (slot && slot.id && slot.date && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail && typeof slot.duration === 'number') {
+         // Validate the slot structure read from storage, ensuring duration is 60
+         if (slot && slot.id && slot.date && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail && slot.duration === 60) {
             const studentViewSlot: StudentSlotView = {
                 id: slot.id,
                 date: slot.date,
                 day: slot.day,
-                time: slot.time,
-                duration: slot.duration, // Use stored duration
+                time: slot.time, // Should be like "08:00"
+                duration: 60, // Always 60 minutes
                 professorEmail: slot.professorEmail,
                 isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
                 bookingTime: slot.bookingTime || null, // Pass booking time
@@ -111,7 +117,7 @@ export function StudentInterface() {
              // 3. It's not booked by anyone
              // 4. The slot start time is not in the past
              if (slot.date === formattedSelectedDate && slot.isAvailable && !slot.bookedBy) {
-                 const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`); // Combine date and time for comparison
+                 const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`); // Combine date and time for comparison (e.g., 2025-04-28T08:00:00)
                  if (!isBefore(slotDateTime, new Date())) { // Check if the slot time is in the future
                       loadedAvailableForDate.push(studentViewSlot);
                  }
@@ -121,8 +127,12 @@ export function StudentInterface() {
             if (slot.bookedBy === currentUserEmail) {
                 loadedBookedByUser.push(studentViewSlot);
             }
+         } else if (slot && slot.duration !== 60) {
+             // Optionally log if we find slots with incorrect duration, might indicate old data
+             // console.warn(`Ignoring slot with incorrect duration (${slot.duration} min):`, slot);
          } else {
-              console.warn(`Invalid or incomplete slot structure found:`, slot); // Log if data structure is unexpected
+              // Log if data structure is unexpected or incomplete
+              // console.warn(`Invalid or incomplete slot structure found:`, slot);
          }
      });
 
@@ -147,6 +157,9 @@ export function StudentInterface() {
         let allProfessorAvailability: Record<string, any[]> = {};
         try {
             allProfessorAvailability = storedAvailability ? JSON.parse(storedAvailability) : {};
+            if (typeof allProfessorAvailability !== 'object' || allProfessorAvailability === null) {
+                 allProfessorAvailability = {};
+            }
         } catch (e) {
             console.error("Failed to parse allProfessorAvailability before booking", e);
             toast({ variant: "destructive", title: "Booking Error", description: "Could not load schedule data." });
@@ -161,15 +174,15 @@ export function StudentInterface() {
         }
 
         // Find the index of the specific slot to book
-        const slotIndex = professorSlots.findIndex(s => s.id === slotToBook.id);
+        const slotIndex = professorSlots.findIndex(s => s.id === slotToBook.id && s.duration === 60); // Ensure it's the correct slot ID and duration
         if (slotIndex === -1) {
-            toast({ variant: "destructive", title: "Booking Error", description: "Slot not found." });
+            toast({ variant: "destructive", title: "Booking Error", description: "Slot not found or invalid." });
             loadSlots(); // Refresh list in case it's outdated
             return;
         }
         const originalSlot = professorSlots[slotIndex];
 
-        // 2. Check if the slot is still available and not in the past
+        // 2. Check if the slot is still available (isAvailable == true) and not booked (bookedBy == null) and not in the past
         const slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
         if (!originalSlot.isAvailable || originalSlot.bookedBy || isBefore(slotDateTime, new Date())) {
              toast({ variant: "destructive", title: "Booking Failed", description: "Slot is no longer available or is in the past." });
@@ -181,8 +194,7 @@ export function StudentInterface() {
         const now = new Date();
         originalSlot.bookedBy = currentUserEmail;
         originalSlot.bookingTime = now.toISOString(); // Store booking time as ISO string
-        // Although professor sets isAvailable, we mark it false upon booking as a safety measure
-        // The professor's view should still reflect bookedBy primarily
+        // Mark isAvailable as false upon booking, professor manages true availability but this prevents double booking
         originalSlot.isAvailable = false;
 
         // 4. Save updated data back to localStorage
@@ -215,6 +227,9 @@ export function StudentInterface() {
             let allProfessorAvailability: Record<string, any[]> = {};
             try {
                  allProfessorAvailability = storedAvailability ? JSON.parse(storedAvailability) : {};
+                 if (typeof allProfessorAvailability !== 'object' || allProfessorAvailability === null) {
+                     allProfessorAvailability = {};
+                 }
             } catch (e) {
                  console.error("Failed to parse allProfessorAvailability before cancelling", e);
                  toast({ variant: "destructive", title: "Cancellation Error", description: "Could not load schedule data." });
@@ -229,9 +244,9 @@ export function StudentInterface() {
            }
 
             // Find the specific slot index
-            const slotIndex = professorSlots.findIndex(s => s.id === slotToCancel.id);
+            const slotIndex = professorSlots.findIndex(s => s.id === slotToCancel.id && s.duration === 60);
             if (slotIndex === -1) {
-                toast({ variant: "destructive", title: "Cancellation Error", description: "Slot not found." });
+                toast({ variant: "destructive", title: "Cancellation Error", description: "Slot not found or invalid." });
                 loadSlots(); // Refresh UI
                 return;
             }
@@ -245,7 +260,6 @@ export function StudentInterface() {
             }
 
             // --- 24-hour cancellation policy check ---
-            // const bookingTime = originalSlot.bookingTime ? parseISO(originalSlot.bookingTime) : null; // Might use bookingTime if needed
             const lessonStartTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
             const now = new Date();
 
@@ -260,11 +274,11 @@ export function StudentInterface() {
             }
             // --- End 24-hour check ---
 
-           // 3. Update slot data: remove booking info, mark as available (professor controls true availability)
+           // 3. Update slot data: remove booking info, mark as available (professor ultimately controls true availability via their interface)
            originalSlot.bookedBy = null;
            originalSlot.bookingTime = null;
-           // Professor should ideally re-enable 'isAvailable'. We set it true here assuming that's the default after cancellation.
-           // The professor interface will still show it based on 'bookedBy' primarily.
+           // IMPORTANT: Set isAvailable back to true, assuming the slot should become available again.
+           // The professor can override this later if needed.
            originalSlot.isAvailable = true;
 
            // 4. Save updated data back to localStorage
@@ -313,7 +327,7 @@ export function StudentInterface() {
              </h3>
              {availableSlots.length === 0 ? (
                  <p className="text-muted-foreground p-4 text-center">
-                     {selectedDate ? 'No slots available for booking on this date.' : 'Select a date to see available slots.'}
+                     {selectedDate ? 'No 60-minute slots available for booking on this date.' : 'Select a date to see available slots.'}
                  </p>
              ) : (
                   <div className="overflow-x-auto border rounded-md max-h-96"> {/* Max height and scroll */}
@@ -322,8 +336,8 @@ export function StudentInterface() {
                         <TableRow>
                           <TableHead className="w-24">Time</TableHead>
                           <TableHead>Professor</TableHead>
-                          <TableHead className="w-20">Duration</TableHead>
-                          <TableHead className="w-28">Actions</TableHead>
+                          <TableHead className="w-20 text-center">Duration</TableHead>
+                          <TableHead className="w-28 text-center">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -331,8 +345,8 @@ export function StudentInterface() {
                           <TableRow key={`available-${slot.id}`}>
                             <TableCell>{slot.time}</TableCell>
                             <TableCell>{slot.professorEmail}</TableCell>
-                            <TableCell>{slot.duration} min</TableCell>
-                            <TableCell>
+                            <TableCell className="text-center">{slot.duration} min</TableCell>
+                            <TableCell className="text-center">
                               <Button onClick={() => bookSlot(slot)} size="sm">Book</Button>
                             </TableCell>
                           </TableRow>
@@ -356,8 +370,8 @@ export function StudentInterface() {
                          <TableHead className="w-32">Date</TableHead>
                          <TableHead className="w-24">Time</TableHead>
                          <TableHead>Professor</TableHead>
-                         <TableHead className="w-20">Duration</TableHead>
-                         <TableHead className="w-40">Actions</TableHead>
+                         <TableHead className="w-20 text-center">Duration</TableHead>
+                         <TableHead className="w-40 text-center">Actions</TableHead>
                        </TableRow>
                      </TableHeader>
                      <TableBody>
@@ -371,8 +385,8 @@ export function StudentInterface() {
                                      <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
                                      <TableCell>{slot.time}</TableCell>
                                      <TableCell>{slot.professorEmail}</TableCell>
-                                     <TableCell>{slot.duration} min</TableCell>
-                                     <TableCell>
+                                     <TableCell className="text-center">{slot.duration} min</TableCell>
+                                     <TableCell className="text-center">
                                          <Button
                                              onClick={() => cancelBooking(slot)}
                                              variant="destructive"
@@ -396,3 +410,4 @@ export function StudentInterface() {
     </div>
   );
 }
+
