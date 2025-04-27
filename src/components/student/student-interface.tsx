@@ -38,9 +38,8 @@ export function StudentInterface() {
       return slots.sort((a, b) => {
           const dateCompare = a.date.localeCompare(b.date);
           if (dateCompare !== 0) return dateCompare;
-          const timeA = parseFloat(a.time.replace(':', '.'));
-          const timeB = parseFloat(b.time.replace(':', '.'));
-          return timeA - timeB;
+          // Simple string comparison works for HH:mm format
+          return a.time.localeCompare(b.time);
       });
    };
 
@@ -51,7 +50,11 @@ export function StudentInterface() {
        if (storedUser) {
          try {
            const userData = JSON.parse(storedUser);
-           setCurrentUserEmail(userData.username);
+           if (userData.role === 'student') {
+              setCurrentUserEmail(userData.username);
+           } else {
+               console.error("Logged in user is not a student.");
+           }
          } catch (e) {
            console.error("Error parsing loggedInUser data:", e);
          }
@@ -71,9 +74,9 @@ export function StudentInterface() {
 
      const formattedSelectedDate = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null;
 
-     // Load all professors' availability
+     // Load all professors' availability (which now contains date-specific slots)
      const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
-     let allProfessorAvailability: Record<string, any[]> = {};
+     let allProfessorAvailability: Record<string, any[]> = {}; // { professorEmail: [slot1, slot2, ...] }
      if (storedAvailability) {
          try {
              allProfessorAvailability = JSON.parse(storedAvailability);
@@ -86,8 +89,9 @@ export function StudentInterface() {
      const loadedAvailableForDate: StudentSlotView[] = [];
      const loadedBookedByUser: StudentSlotView[] = [];
 
+     // Iterate through each professor's list of slots
      Object.values(allProfessorAvailability).flat().forEach(slot => {
-         // Basic validation
+         // Basic validation of the slot structure read from storage
          if (slot && slot.id && slot.date && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail) {
             const studentViewSlot: StudentSlotView = {
                 id: slot.id,
@@ -98,29 +102,32 @@ export function StudentInterface() {
                 professorEmail: slot.professorEmail,
                 isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
                 bookingTime: slot.bookingTime || null, // Pass booking time
-                // classroom: slot.classroom || 'N/A',
             };
 
-             // Add to available list only if it's for the selected date, is available, and not booked
-            if (slot.date === formattedSelectedDate && slot.isAvailable && !slot.bookedBy) {
-                // Also check if the slot date is not in the past
-                const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`);
-                if (!isBefore(slotDateTime, startOfDay(new Date()))) {
-                     loadedAvailableForDate.push(studentViewSlot);
-                }
-            }
-             // Add to the user's booked list if booked by them, regardless of date
+             // Add to AVAILABLE list if:
+             // 1. It's for the selected date
+             // 2. The professor marked it as available
+             // 3. It's not booked by anyone
+             // 4. The slot start time is not in the past
+             if (slot.date === formattedSelectedDate && slot.isAvailable && !slot.bookedBy) {
+                 const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`); // Combine date and time for comparison
+                 if (!isBefore(slotDateTime, new Date())) { // Check if the slot time is in the future
+                      loadedAvailableForDate.push(studentViewSlot);
+                 }
+             }
+
+             // Add to the user's BOOKED list if booked by them, regardless of date
             if (slot.bookedBy === currentUserEmail) {
                 loadedBookedByUser.push(studentViewSlot);
             }
          } else {
-             // console.warn(`Invalid slot structure found:`, slot);
+             // console.warn(`Invalid slot structure found:`, slot); // Log if data structure is unexpected
          }
      });
 
-      // Sort available slots for the selected date
+      // Sort available slots for the selected date by time
       setAvailableSlots(sortSlots(loadedAvailableForDate));
-      // Sort all booked slots for the user
+      // Sort all booked slots for the user by date and then time
       setBookedSlots(sortSlots(loadedBookedByUser));
 
   }, [currentUserEmail, selectedDate]); // Rerun when user or date changes
@@ -145,16 +152,18 @@ export function StudentInterface() {
             return;
         }
 
+        // Find the specific professor's list of slots
         const professorSlots = allProfessorAvailability[slotToBook.professorEmail];
         if (!professorSlots || !Array.isArray(professorSlots)) {
              toast({ variant: "destructive", title: "Booking Error", description: "Professor's schedule not found." });
              return;
         }
 
+        // Find the index of the specific slot to book
         const slotIndex = professorSlots.findIndex(s => s.id === slotToBook.id);
         if (slotIndex === -1) {
             toast({ variant: "destructive", title: "Booking Error", description: "Slot not found." });
-            loadSlots(); // Refresh list
+            loadSlots(); // Refresh list in case it's outdated
             return;
         }
         const originalSlot = professorSlots[slotIndex];
@@ -163,28 +172,37 @@ export function StudentInterface() {
         const slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
         if (!originalSlot.isAvailable || originalSlot.bookedBy || isBefore(slotDateTime, new Date())) {
              toast({ variant: "destructive", title: "Booking Failed", description: "Slot is no longer available or is in the past." });
-             loadSlots(); // Refresh the list
+             loadSlots(); // Refresh the list to show the current state
              return;
         }
 
-        // 3. Update the slot data
+        // 3. Update the slot data: mark as booked by current user and record time
         const now = new Date();
         originalSlot.bookedBy = currentUserEmail;
-        originalSlot.bookingTime = now.toISOString(); // Store as ISO string
+        originalSlot.bookingTime = now.toISOString(); // Store booking time as ISO string
+        // Although professor sets isAvailable, we mark it false upon booking as a safety measure
+        // The professor's view should still reflect bookedBy primarily
         originalSlot.isAvailable = false;
 
-        // 4. Save updated data
-        allProfessorAvailability[slotToBook.professorEmail] = professorSlots;
+        // 4. Save updated data back to localStorage
+        allProfessorAvailability[slotToBook.professorEmail] = professorSlots; // Update the professor's slot list
         localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
 
-        // 5. Update UI state
+        // 5. Update UI state immediately by reloading slots
         loadSlots(); // Reload all slots to reflect the change
 
         toast({ title: "Booking Successful", description: `Lesson with ${slotToBook.professorEmail} booked for ${format(parseISO(slotToBook.date), 'PPP')} at ${slotToBook.time}.` });
 
-        // TODO: Send email confirmation
-        // sendEmail({ to: currentUserEmail, subject: 'Booking Confirmation', ... });
-        // sendEmail({ to: slotToBook.professorEmail, subject: 'New Booking', ... });
+        // Potential Email Confirmation (implement sendEmail service if needed)
+        // try {
+        //   await sendEmail({ to: currentUserEmail, subject: 'Booking Confirmation', html: `...` });
+        //   await sendEmail({ to: slotToBook.professorEmail, subject: 'New Booking Notification', html: `...` });
+        // } catch (emailError) {
+        //   console.error("Failed to send booking confirmation emails:", emailError);
+        //   // Optionally inform user, but booking itself succeeded
+        //   toast({ variant: "destructive", title: "Email Error", description: "Booking confirmed, but failed to send confirmation email." });
+        // }
+
     }
   }, [currentUserEmail, loadSlots, toast]); // Include loadSlots and toast
 
@@ -202,12 +220,14 @@ export function StudentInterface() {
                  return;
             }
 
+           // Find the professor's slot list
            const professorSlots = allProfessorAvailability[slotToCancel.professorEmail];
             if (!professorSlots || !Array.isArray(professorSlots)) {
                 toast({ variant: "destructive", title: "Cancellation Error", description: "Professor's schedule not found." });
                 return;
            }
 
+            // Find the specific slot index
             const slotIndex = professorSlots.findIndex(s => s.id === slotToCancel.id);
             if (slotIndex === -1) {
                 toast({ variant: "destructive", title: "Cancellation Error", description: "Slot not found." });
@@ -219,12 +239,12 @@ export function StudentInterface() {
            // 2. Verify the current user booked this slot
             if (originalSlot.bookedBy !== currentUserEmail) {
                  toast({ variant: "destructive", title: "Cancellation Error", description: "You did not book this slot." });
-                 loadSlots();
+                 loadSlots(); // Refresh UI just in case
                  return;
             }
 
-            // --- 24-hour cancellation check ---
-            const bookingTime = originalSlot.bookingTime ? parseISO(originalSlot.bookingTime) : null;
+            // --- 24-hour cancellation policy check ---
+            // const bookingTime = originalSlot.bookingTime ? parseISO(originalSlot.bookingTime) : null; // Might use bookingTime if needed
             const lessonStartTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
             const now = new Date();
 
@@ -233,28 +253,35 @@ export function StudentInterface() {
                      variant: "destructive",
                      title: "Cancellation Failed",
                      description: "Cannot cancel a lesson less than 24 hours in advance.",
+                     duration: 5000, // Show longer
                  });
-                 return;
+                 return; // Stop cancellation
             }
             // --- End 24-hour check ---
 
-           // 3. Update slot data: remove booking, make available
+           // 3. Update slot data: remove booking info, mark as available (professor controls true availability)
            originalSlot.bookedBy = null;
            originalSlot.bookingTime = null;
-           originalSlot.isAvailable = true; // Make available again
+           // Professor should ideally re-enable 'isAvailable'. We set it true here assuming that's the default after cancellation.
+           // The professor interface will still show it based on 'bookedBy' primarily.
+           originalSlot.isAvailable = true;
 
-           // 4. Save updated data
-           allProfessorAvailability[slotToCancel.professorEmail] = professorSlots;
+           // 4. Save updated data back to localStorage
+           allProfessorAvailability[slotToCancel.professorEmail] = professorSlots; // Update the professor's list
            localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
 
-           // 5. Update UI state
+           // 5. Update UI state immediately by reloading slots
            loadSlots(); // Reload all slots
 
            toast({ title: "Booking Cancelled", description: `Your lesson with ${slotToCancel.professorEmail} on ${format(parseISO(slotToCancel.date), 'PPP')} at ${slotToCancel.time} has been cancelled.` });
 
-            // TODO: Send cancellation emails
-            // sendEmail({ to: currentUserEmail, subject: 'Cancellation Confirmation', ... });
-            // sendEmail({ to: slotToCancel.professorEmail, subject: 'Booking Cancelled', ... });
+            // Potential Cancellation Email Notifications
+            // try {
+            //    await sendEmail({ to: currentUserEmail, subject: 'Booking Cancellation Confirmation', html: `...` });
+            //    await sendEmail({ to: slotToCancel.professorEmail, subject: 'Booking Cancelled by Student', html: `...` });
+            // } catch (emailError) {
+            //      console.error("Failed to send cancellation emails:", emailError);
+            // }
        }
    }, [currentUserEmail, loadSlots, toast]); // Include loadSlots and toast
 
@@ -285,7 +312,7 @@ export function StudentInterface() {
              </h3>
              {availableSlots.length === 0 ? (
                  <p className="text-muted-foreground p-4 text-center">
-                     {selectedDate ? 'No slots available for this date.' : 'Select a date to see available slots.'}
+                     {selectedDate ? 'No slots available for booking on this date.' : 'Select a date to see available slots.'}
                  </p>
              ) : (
                   <div className="overflow-x-auto border rounded-md max-h-96"> {/* Max height and scroll */}
@@ -332,6 +359,7 @@ export function StudentInterface() {
                      <TableBody>
                          {bookedSlots.map((slot) => {
                              const lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`);
+                             // Check if cancellation is allowed (more than 24 hours before)
                              const canCancel = differenceInHours(lessonDateTime, new Date()) >= 24;
 
                              return (
@@ -344,7 +372,7 @@ export function StudentInterface() {
                                              onClick={() => cancelBooking(slot)}
                                              variant="destructive"
                                              size="sm"
-                                             disabled={!canCancel}
+                                             disabled={!canCancel} // Disable if within 24 hours
                                              title={!canCancel ? "Cannot cancel less than 24 hours before" : "Cancel this booking"}
                                          >
                                              Cancel Booking
@@ -363,5 +391,3 @@ export function StudentInterface() {
     </div>
   );
 }
-
-    
