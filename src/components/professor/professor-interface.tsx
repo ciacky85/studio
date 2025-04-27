@@ -104,7 +104,9 @@ export function ProfessorInterface() {
     );
 
     // 4. Generate potential slots based ONLY on admin schedule for the specific day of the week assigned to this professor
-    const generatedSlots: BookableSlot[] = [];
+    // Use a Map to ensure unique slot IDs during generation
+    const generatedSlotsMap = new Map<string, BookableSlot>();
+
     Object.entries(classroomSchedule).forEach(([hourlyKey, assignedEmail]) => {
       const [day, hourTime] = hourlyKey.split('-'); // e.g., "Monday", "08:00"
 
@@ -123,8 +125,9 @@ export function ProfessorInterface() {
         const existingSlot1 = existingSlotsForDateMap.get(slot1Id);
         const existingSlot2 = existingSlotsForDateMap.get(slot2Id);
 
-        // Add the first 30-min slot, using existing data or defaults
-        generatedSlots.push({
+        // Add the first 30-min slot to the map, using existing data or defaults
+        // Map automatically handles overwrites if the same ID is generated twice (shouldn't happen here but safer)
+        generatedSlotsMap.set(slot1Id, {
           id: slot1Id,
           date: formattedDate,
           day: dayOfWeekString,
@@ -137,8 +140,8 @@ export function ProfessorInterface() {
           professorEmail: currentUserEmail,
         });
 
-        // Add the second 30-min slot, using existing data or defaults
-        generatedSlots.push({
+        // Add the second 30-min slot to the map, using existing data or defaults
+        generatedSlotsMap.set(slot2Id, {
           id: slot2Id,
           date: formattedDate,
           day: dayOfWeekString,
@@ -152,6 +155,9 @@ export function ProfessorInterface() {
         });
       }
     });
+
+    // Convert map values back to an array
+    const generatedSlots = Array.from(generatedSlotsMap.values());
 
     // Sort generated slots by time
      generatedSlots.sort((a, b) => {
@@ -297,3 +303,4 @@ export function ProfessorInterface() {
     </div>
   );
 }
+
