@@ -284,7 +284,7 @@ export function StudentInterface() {
                      </TableHeader>
                      <TableBody>
                        {availableSlots.map((slot) => (
-                         <TableRow key={`available-${slot.id}`}> {/* Ensure unique key */}
+                         <TableRow key={`available-${slot.id}`}>{/* Ensure unique key */}
                            {/* <TableCell>{slot.classroom}</TableCell> */}
                            <TableCell>{slot.day}</TableCell>
                            <TableCell>{slot.time}</TableCell>
@@ -320,7 +320,7 @@ export function StudentInterface() {
                      </TableHeader>
                      <TableBody>
                          {bookedSlots.map((slot) => (
-                            <TableRow key={`booked-${slot.id}`}> {/* Ensure unique key */}
+                            <TableRow key={`booked-${slot.id}`}>{/* Ensure unique key */}
                                 {/* <TableCell>{slot.classroom}</TableCell> */}
                                 <TableCell>{slot.day}</TableCell>
                                 <TableCell>{slot.time}</TableCell>
