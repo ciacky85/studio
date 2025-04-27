@@ -8,8 +8,7 @@ import {Button} from '@/components/ui/button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
 import {Input} from '@/components/ui/input';
 import Link from 'next/link';
-import {useRouter} from 'next/navigation';
-// import ClientHeader from '@/components/ClientHeader'; // Remove import - Handled by RootLayout
+import {useRouter, usePathname} from 'next/navigation'; // Import usePathname
 
 export default function Home() {
   const [role, setRole] = useState<'admin' | 'professor' | 'student' | null>(null);
@@ -17,6 +16,7 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const router = useRouter();
+  const pathname = usePathname(); // Get current pathname
 
   // Function to check login status and update role state
   const checkLoginAndSetRole = () => {
@@ -53,10 +53,10 @@ export default function Home() {
 
    // Re-check role if the path changes back to '/' (e.g., after logout)
    useEffect(() => {
-        if (typeof window !== 'undefined' && window.location.pathname === '/') {
+        if (pathname === '/') { // Check specifically if the current path is the root
             checkLoginAndSetRole();
         }
-   }, [typeof window !== 'undefined' ? window.location.pathname : '']);
+   }, [pathname]); // Add pathname as dependency
 
 
   const handleLogin = () => {
@@ -172,7 +172,7 @@ export default function Home() {
 
   return (
     <>
-      {/* <ClientHeader /> */} {/* Remove ClientHeader rendering here */}
+      {/* ClientHeader is handled by RootLayout */}
       <main className="flex flex-grow flex-col items-center justify-center p-4 sm:p-12 md:p-24">
         {renderInterface()}
       </main>
