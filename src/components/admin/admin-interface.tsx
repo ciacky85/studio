@@ -14,44 +14,55 @@ import {Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Table
 import {sendEmail} from '@/services/email'; // Import the email service
 import {useToast} from "@/hooks/use-toast";
 import type { UserData } from '@/types/user'; // Assuming UserData type is defined
+import { Separator } from '@/components/ui/separator'; // Import Separator
 
-// Mocked pending registrations (replace with actual data source if needed)
-const mockedPendingRegistrations = [
-    // Example structure, actual data loaded from localStorage
-    // { id: 1, name: 'John Doe', role: 'student', email: 'john.doe@example.com' },
-];
+// Define the structure for user display
+interface DisplayUser {
+  id: number;
+  name: string;
+  role: string;
+  email: string;
+}
+
 
 export function AdminInterface() {
-  const [pendingRegistrations, setPendingRegistrations] = useState<{ id: number; name: string; role: string; email: string }[]>([]);
+  const [pendingRegistrations, setPendingRegistrations] = useState<DisplayUser[]>([]);
+  const [approvedUsers, setApprovedUsers] = useState<DisplayUser[]>([]); // State for approved users
   const [professors, setProfessors] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<Record<string, string>>({}); // Key: "Day-Time", Value: Professor Email or ""
 
   const {toast} = useToast();
 
-  // Load pending registrations and professors from localStorage on mount
-  useEffect(() => {
+  // Function to load users from localStorage
+  const loadUsers = () => {
     if (typeof window !== 'undefined') {
-      const loadedPending: { id: number; name: string; role: string; email: string }[] = [];
+      const loadedPending: DisplayUser[] = [];
+      const loadedApproved: DisplayUser[] = [];
       const loadedProfessors: string[] = [];
       let idCounter = 1;
 
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key !== 'classroomSchedule' && key !== 'availableSlots' && key !== 'loggedInUser') { // Avoid parsing non-user data
+        // Basic check to avoid parsing non-user/non-schedule items
+        if (key && !['classroomSchedule', 'availableSlots', 'loggedInUser'].includes(key)) {
           try {
             const item = localStorage.getItem(key);
             if (item) {
-              const userData: UserData & { password?: string } = JSON.parse(item); // Added password to type assertion for safety
+              const userData: UserData & { password?: string } = JSON.parse(item);
 
               // Check if it looks like a user registration entry
-              if (userData.role && (userData.approved === false || userData.approved === undefined)) {
-                 // Assume name is derivable from email or add a name field during registration if needed
+              if (userData.role && typeof userData.approved === 'boolean') { // Check if role and approved status exist
                  const name = key.split('@')[0]; // Simple name extraction from email
-                 loadedPending.push({ id: idCounter++, name: name, role: userData.role, email: key });
-              }
+                 const userDisplayData: DisplayUser = { id: idCounter++, name: name, role: userData.role, email: key };
 
-              if (userData.role === 'professor' && userData.approved !== false) {
-                loadedProfessors.push(key); // Use email (key) as professor identifier
+                 if (userData.approved === true) {
+                   loadedApproved.push(userDisplayData);
+                   if (userData.role === 'professor') {
+                     loadedProfessors.push(key); // Add approved professors to the list
+                   }
+                 } else { // approved === false means pending
+                   loadedPending.push(userDisplayData);
+                 }
               }
             }
           } catch (e) {
@@ -60,8 +71,14 @@ export function AdminInterface() {
         }
       }
       setPendingRegistrations(loadedPending);
+      setApprovedUsers(loadedApproved);
       setProfessors(loadedProfessors);
     }
+  };
+
+  // Load pending/approved registrations and professors from localStorage on mount
+  useEffect(() => {
+    loadUsers();
   }, []); // Run only on mount
 
 
@@ -104,9 +121,12 @@ export function AdminInterface() {
       const userDataString = localStorage.getItem(email);
       if (userDataString) {
         try {
-          const userData = JSON.parse(userDataString);
+          let userData: UserData = JSON.parse(userDataString);
           userData.approved = true; // Mark as approved
           localStorage.setItem(email, JSON.stringify(userData)); // Update in localStorage
+
+          // Find the user in pending list to move them
+          const userToApprove = pendingRegistrations.find((reg) => reg.email === email);
 
           // Send approval email
           await sendEmail({
@@ -115,13 +135,16 @@ export function AdminInterface() {
             html: '<p>Your registration has been approved. You can now log in.</p>',
           });
 
-          // Remove from pending registrations state
+          // Update states: remove from pending, add to approved
           setPendingRegistrations(prev => prev.filter((reg) => reg.email !== email));
-
-          // Add to professors list if role is professor
-          if (userData.role === 'professor') {
-            setProfessors(prev => [...prev, email]);
+          if (userToApprove) {
+            setApprovedUsers(prev => [...prev, userToApprove]); // Add to approved list
+            // If the approved user is a professor, update the professor list used for scheduling
+            if (userToApprove.role === 'professor') {
+              setProfessors(prev => [...prev, email]);
+            }
           }
+
 
           toast({
             title: "Registration Approved",
@@ -190,11 +213,14 @@ export function AdminInterface() {
 
   const handleProfessorChange = (day: string, time: string, professorEmail: string) => {
     const key = `${day}-${time}`;
-    setSchedule(prevSchedule => ({
-        ...prevSchedule,
-        [key]: professorEmail === 'unassigned' ? '' : professorEmail // Store empty string for unassigned
-    }));
-    // The useEffect watching `schedule` will handle saving to localStorage
+    setSchedule(prevSchedule => {
+        const newSchedule = { ...prevSchedule, [key]: professorEmail === 'unassigned' ? '' : professorEmail };
+        // Save to localStorage immediately after state update
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('classroomSchedule', JSON.stringify(newSchedule));
+        }
+        return newSchedule;
+    });
   };
 
   return (
@@ -205,9 +231,9 @@ export function AdminInterface() {
           <CardDescription>Manage user registrations and classroom availability.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
-          {/* Use w-full or specific width like max-w-4xl etc. */}
+          {/* Use w-full or responsive width */}
           <Tabs defaultValue="classrooms" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2">
               <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
               <TabsTrigger value="users">Users</TabsTrigger>
             </TabsList>
@@ -224,7 +250,7 @@ export function AdminInterface() {
                                  <TableRow>
                                      <TableHead className="min-w-[80px] w-24 sticky left-0 bg-background z-10">Time</TableHead>
                                      {days.map((day) => (
-                                         <TableHead key={day} className="min-w-[200px] w-40">{day}</TableHead>
+                                         <TableHead key={day} className="min-w-[200px] w-48">{day}</TableHead>
                                      ))}
                                  </TableRow>
                              </TableHeader>
@@ -287,11 +313,11 @@ export function AdminInterface() {
                                  </TableHeader>
                                  <TableBody>
                                      {pendingRegistrations.map((reg) => (
-                                         <TableRow key={reg.id}>
+                                         <TableRow key={`pending-${reg.id}`}>
                                              <TableCell>{reg.name}</TableCell>
                                              <TableCell>{reg.role}</TableCell>
                                              <TableCell>{reg.email}</TableCell>
-                                             <TableCell className="flex gap-2">
+                                             <TableCell className="flex flex-wrap gap-2">
                                                  <Button onClick={() => approveRegistration(reg.email)} size="sm">Approve</Button>
                                                  <Button onClick={() => rejectRegistration(reg.email)} variant="destructive" size="sm">Reject</Button>
                                              </TableCell>
@@ -301,6 +327,45 @@ export function AdminInterface() {
                              </Table>
                          ) : (
                              <p>No pending registrations.</p>
+                         )}
+                     </div>
+                 </CardContent>
+             </Card>
+             <Separator className="my-4" />
+             <Card>
+                <CardHeader>
+                     <CardTitle>Approved Users</CardTitle>
+                     <CardDescription>List of all registered and approved users.</CardDescription>
+                 </CardHeader>
+                 <CardContent>
+                     <div className="overflow-x-auto">
+                         {approvedUsers.length > 0 ? (
+                             <Table>
+                                 <TableHeader>
+                                     <TableRow>
+                                         <TableHead>Name</TableHead>
+                                         <TableHead>Role</TableHead>
+                                         <TableHead>Email</TableHead>
+                                         {/* Add Actions column if needed later */}
+                                         {/* <TableHead>Actions</TableHead> */}
+                                     </TableRow>
+                                 </TableHeader>
+                                 <TableBody>
+                                     {approvedUsers.map((user) => (
+                                         <TableRow key={`approved-${user.id}`}>
+                                             <TableCell>{user.name}</TableCell>
+                                             <TableCell>{user.role}</TableCell>
+                                             <TableCell>{user.email}</TableCell>
+                                             {/* Add Action buttons if needed */}
+                                             {/* <TableCell className="flex gap-2"> */}
+                                                {/* Example: <Button variant="outline" size="sm">Manage</Button> */}
+                                             {/* </TableCell> */}
+                                         </TableRow>
+                                     ))}
+                                 </TableBody>
+                             </Table>
+                         ) : (
+                             <p>No approved users found.</p>
                          )}
                      </div>
                  </CardContent>
