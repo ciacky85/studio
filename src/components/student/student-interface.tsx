@@ -5,7 +5,7 @@ import {useState, useEffect, useCallback} from 'react';
 import {Button} from '@/components/ui/button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
-import {Calendar} from '@/components/ui/calendar'; // Import Calendar
+// import {Calendar} from '@/components/ui/calendar'; // Remove Calendar import
 import {useToast} from "@/hooks/use-toast";
 import { format, isBefore, startOfDay, parseISO, differenceInHours } from 'date-fns'; // Import date-fns functions
 
@@ -27,8 +27,8 @@ const ALL_PROFESSOR_AVAILABILITY_KEY = 'allProfessorAvailability';
 const LOGGED_IN_USER_KEY = 'loggedInUser';
 
 export function StudentInterface() {
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [availableSlots, setAvailableSlots] = useState<StudentSlotView[]>([]);
+  // const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date()); // Remove selectedDate state
+  const [allAvailableSlots, setAllAvailableSlots] = useState<StudentSlotView[]>([]); // State for ALL available slots
   const [bookedSlots, setBookedSlots] = useState<StudentSlotView[]>([]); // Still show all booked slots regardless of date
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const {toast} = useToast();
@@ -71,12 +71,12 @@ export function StudentInterface() {
   // Function to load slots based on selected date and all booked slots for the user
   const loadSlots = useCallback(() => {
      if (typeof window === 'undefined' || !currentUserEmail) {
-         setAvailableSlots([]);
+         setAllAvailableSlots([]); // Clear all available slots
          setBookedSlots([]);
          return;
      }
 
-     const formattedSelectedDate = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null;
+     // const formattedSelectedDate = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null; // No longer needed
 
      // Load all professors' availability (which now contains date-specific slots)
      const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
@@ -93,7 +93,7 @@ export function StudentInterface() {
          }
      }
 
-     const loadedAvailableForDate: StudentSlotView[] = [];
+     const loadedAllAvailable: StudentSlotView[] = []; // Changed name
      const loadedBookedByUser: StudentSlotView[] = [];
 
      // Iterate through each professor's list of slots
@@ -111,15 +111,14 @@ export function StudentInterface() {
                 bookingTime: slot.bookingTime || null, // Pass booking time
             };
 
-             // Add to AVAILABLE list if:
-             // 1. It's for the selected date
-             // 2. The professor marked it as available
-             // 3. It's not booked by anyone
-             // 4. The slot start time is not in the past
-             if (slot.date === formattedSelectedDate && slot.isAvailable && !slot.bookedBy) {
+             // Add to ALL AVAILABLE list if:
+             // 1. The professor marked it as available
+             // 2. It's not booked by anyone
+             // 3. The slot start time is not in the past
+             if (slot.isAvailable && !slot.bookedBy) { // Removed date check here
                  const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`); // Combine date and time for comparison (e.g., 2025-04-28T08:00:00)
                  if (!isBefore(slotDateTime, new Date())) { // Check if the slot time is in the future
-                      loadedAvailableForDate.push(studentViewSlot);
+                      loadedAllAvailable.push(studentViewSlot); // Add to the main available list
                  }
              }
 
@@ -136,12 +135,12 @@ export function StudentInterface() {
          }
      });
 
-      // Sort available slots for the selected date by time
-      setAvailableSlots(sortSlots(loadedAvailableForDate));
+      // Sort all available slots by date and then time
+      setAllAvailableSlots(sortSlots(loadedAllAvailable));
       // Sort all booked slots for the user by date and then time
       setBookedSlots(sortSlots(loadedBookedByUser));
 
-  }, [currentUserEmail, selectedDate]); // Rerun when user or date changes
+  }, [currentUserEmail]); // Rerun when user changes, removed selectedDate dependency
 
   // Load slots on mount and when dependencies change
   useEffect(() => {
@@ -306,11 +305,11 @@ export function StudentInterface() {
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Student Interface</CardTitle>
-          <CardDescription>Select a date to view and book available 60-minute lesson slots.</CardDescription>
+          <CardDescription>View and book available 60-minute lesson slots or manage your bookings.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-6 md:grid-cols-2"> {/* Grid layout */}
-            {/* Calendar Selection */}
-             <div className="flex justify-center">
+        <CardContent className="grid gap-6"> {/* Removed md:grid-cols-2 */}
+            {/* Removed Calendar Selection */}
+            {/* <div className="flex justify-center">
                <Calendar
                  mode="single"
                  selected={selectedDate}
@@ -318,22 +317,23 @@ export function StudentInterface() {
                  className="rounded-md border"
                  disabled={(date) => isBefore(date, startOfDay(new Date()))} // Disable past dates
                />
-             </div>
+             </div> */}
 
-           {/* Available Slots for Selected Date */}
+           {/* Available Slots */}
            <div>
              <h3 className="text-lg font-semibold mb-3">
-                Available Slots for {selectedDate ? format(selectedDate, 'PPP') : 'No date selected'}
+                Available Slots for Booking
              </h3>
-             {availableSlots.length === 0 ? (
+             {allAvailableSlots.length === 0 ? (
                  <p className="text-muted-foreground p-4 text-center">
-                     {selectedDate ? 'No 60-minute slots available for booking on this date.' : 'Select a date to see available slots.'}
+                     No 60-minute slots currently available for booking.
                  </p>
              ) : (
                   <div className="overflow-x-auto border rounded-md max-h-96"> {/* Max height and scroll */}
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead className="w-32">Date</TableHead> {/* Added Date */}
                           <TableHead className="w-24">Time</TableHead>
                           <TableHead>Professor</TableHead>
                           <TableHead className="w-20 text-center">Duration</TableHead>
@@ -341,8 +341,9 @@ export function StudentInterface() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {availableSlots.map((slot) => (
+                        {allAvailableSlots.map((slot) => (
                           <TableRow key={`available-${slot.id}`}>
+                            <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell> {/* Format date */}
                             <TableCell>{slot.time}</TableCell>
                             <TableCell>{slot.professorEmail}</TableCell>
                             <TableCell className="text-center">{slot.duration} min</TableCell>
@@ -358,7 +359,8 @@ export function StudentInterface() {
            </div>
 
            {/* Booked Slots (Always Visible) */}
-           <div className="md:col-span-2"> {/* Span across both columns on medium screens */}
+           {/* Removed md:col-span-2 as we no longer have columns */}
+           <div>
             <h3 className="text-lg font-semibold mb-3 mt-6">Your Booked Lessons</h3>
             {bookedSlots.length === 0 ? (
                  <p className="text-muted-foreground p-4 text-center">You haven't booked any lessons yet.</p>
@@ -410,4 +412,3 @@ export function StudentInterface() {
     </div>
   );
 }
-
