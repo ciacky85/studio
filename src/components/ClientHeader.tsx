@@ -57,6 +57,7 @@ const ClientHeader = () => {
       localStorage.removeItem('loggedInUser');
       setIsLoggedIn(false); // Update state immediately
       router.replace('/'); // Redirect to login page using replace to prevent back navigation to logged-in state
+      // No need to manually setRole to null here, the page component's useEffect will handle it
     }
   };
 
@@ -82,7 +83,7 @@ const ClientHeader = () => {
           <Button variant="outline">Login</Button>
         </Link>
       ) : (
-        // User is not logged in AND is on an auth page, show nothing (correct behavior)
+        // User is not logged in AND is on an auth page (login or register), show nothing
         null
       )}
     </header>
@@ -90,3 +91,4 @@ const ClientHeader = () => {
 };
 
 export default ClientHeader;
+
