@@ -1,61 +1,47 @@
-# Stage 1: Builder
-# Use a specific Node.js version compatible with the project
+# Stage 1: Build the Next.js application
 FROM node:20.9.0-alpine AS builder
-
-# Set the working directory in the container
-WORKDIR /app
-
-# Copy package.json and package-lock.json (or yarn.lock if used)
-# Ensure package-lock.json exists or run `npm install` locally first to generate it
-COPY package.json package-lock.json* ./
-# If using yarn:
-# COPY package.json yarn.lock ./
-
-# Install dependencies using npm ci for faster, more reliable builds from lock file
-# If package-lock.json wasn't present, Docker will create it here if not ignored
-RUN npm ci
-# If using yarn:
-# RUN yarn install --frozen-lockfile
-
-# Copy the rest of the application code
-# Ensure .dockerignore doesn't exclude necessary source files (like src)
-COPY . .
-
-# Set environment variable for Next.js build
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV NODE_ENV production
-
-# Build the Next.js application
-# This assumes your build script is defined in package.json
-RUN npm run build
-
-# Stage 2: Production Runner
-# Use a lightweight Node.js image for the production environment
-FROM node:20.9.0-alpine AS runner
 
 # Set the working directory
 WORKDIR /app
 
-# Create a non-root user for security
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# Copy package.json AND package-lock.json
+COPY package.json ./
+# Make sure package-lock.json is copied BEFORE running npm ci
+COPY package-lock.json ./
 
-# Copy necessary files from the builder stage
-# Copy only the production build artifacts
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Install dependencies using npm ci for faster, more reliable builds based on lock file
+# This requires package-lock.json to be present
+RUN npm ci
 
-# Public directory is often needed for static assets like images
-# Check if your app uses a public directory and uncomment if needed
-# COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# Copy the rest of the application code
+COPY . .
 
-# Switch to the non-root user
-USER nextjs
+# Set environment variables (optional, can be overridden at runtime)
+# ENV NODE_ENV=production
+# ENV EMAIL_USER=your_email@example.com
+# ENV EMAIL_PASS=your_password
 
-# Expose the port the app runs on (default Next.js port is 3000)
+# Build the Next.js application
+RUN npm run build
+
+# Stage 2: Create the production image
+FROM node:20.9.0-alpine
+
+WORKDIR /app
+
+# Set NODE_ENV to production
+ENV NODE_ENV production
+
+# Copy built assets from the builder stage
+# Copy the standalone Next.js output
+COPY --from=builder /app/.next/standalone ./
+# Copy the static assets (if any)
+COPY --from=builder /app/.next/static ./.next/static
+# Copy the public directory (if it exists and is needed)
+# COPY --from=builder /app/public ./public
+
+# Expose the port the app runs on (default 3000 for production start)
 EXPOSE 3000
 
-# Set the default command to run the application
-# Use the node server directly for standalone output
-# Ensure the path to server.js is correct for standalone output
+# Command to run the application
 CMD ["node", "server.js"]
