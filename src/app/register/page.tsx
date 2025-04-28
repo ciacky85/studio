@@ -8,7 +8,7 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/c
 import {useRouter} from 'next/navigation';
 import {sendEmail} from '@/services/email'; // Import the email service
 import {useToast} from "@/hooks/use-toast";
-// import ClientHeader from '@/components/ClientHeader'; // Remove import - Handled by RootLayout
+import Link from 'next/link'; // Import Link
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -150,6 +150,9 @@ export default function Register() {
                 ? 'Riprova Registrazione' // Changed text for clarity
                 : 'Registrati'}
             </Button>
+            <Link href="/" className="w-full">
+              <Button variant="outline" className="w-full">Torna al Login</Button>
+            </Link>
 
           </CardContent>
         </Card>
