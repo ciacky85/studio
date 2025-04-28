@@ -15,17 +15,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-// Interface for the user passed to the dialog
-interface UserForAssignment {
+// Interface for the user passed from the admin interface (includes admin role possibility)
+interface DisplayUser {
     email: string;
-    role: 'student' | 'professor'; // Include role for context if needed
+    role: 'student' | 'professor' | 'admin'; // Align with the type passed from admin-interface
     assignedProfessorEmails?: string[] | null;
 }
+
 
 interface ManageUserProfessorsDialogProps {
     isOpen: boolean;
     onClose: () => void;
-    user: UserForAssignment | null; // Accept a user object (student or professor)
+    user: DisplayUser | null; // Accept the DisplayUser type directly
     allProfessors: string[];
     onSave: (userEmail: string, assignedEmails: string[]) => void;
 }
@@ -41,15 +42,16 @@ export function ManageUserProfessorsDialog({
 
     // Initialize selected professors based on the user's current assignments when the dialog opens or user changes
     useEffect(() => {
+        // Ensure user is not null and assignedProfessorEmails is an array before setting state
         if (user && Array.isArray(user.assignedProfessorEmails)) {
-            // Filter out the user's own email if they are a professor
+             // Filter out the user's own email if they are a professor
              setSelectedProfessors(
                  user.role === 'professor'
                      ? user.assignedProfessorEmails.filter(email => email !== user.email)
                      : user.assignedProfessorEmails
              );
         } else {
-            setSelectedProfessors([]); // Reset if no assignments or invalid data
+            setSelectedProfessors([]); // Reset if no assignments or invalid data or user is null
         }
     }, [user, isOpen]); // Re-run when the user or isOpen changes
 
@@ -72,23 +74,26 @@ export function ManageUserProfessorsDialog({
 
     const handleSaveChanges = () => {
         if (user) {
+            // The onSave function expects the user's email and the list of selected professors
             onSave(user.email, selectedProfessors);
         }
     };
 
     // Filter out the current user if they are a professor from the list of assignable professors
+    // This logic remains the same, handling the 'professor' role case.
     const assignableProfessors = user?.role === 'professor'
         ? allProfessors.filter(profEmail => profEmail !== user.email)
         : allProfessors;
 
 
-    if (!user) return null; // Don't render if no user is selected
+    if (!user || user.role === 'admin') return null; // Don't render if no user is selected or if user is admin
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>Gestisci Professori per {user.email}</DialogTitle>
+                    {/* Title now reflects the actual role from DisplayUser */}
+                    <DialogTitle>Gestisci Professori per {user.email} ({user.role === 'student' ? 'Studente' : 'Professore'})</DialogTitle>
                     <DialogDescription>
                         Seleziona i professori da cui questo {user.role === 'student' ? 'studente' : 'professore'} può prenotare lezioni.
                     </DialogDescription>
