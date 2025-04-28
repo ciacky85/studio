@@ -19,10 +19,11 @@ import { getCalendarLinksFromSlot } from '@/lib/calendar-utils'; // Import calen
 
 // Define the structure of a bookable slot (common structure)
 interface BookableSlot {
-  id: string; // Use 'YYYY-MM-DD-HH:00-professorEmail' as a unique identifier
+  id: string; // Use 'YYYY-MM-DD-HH:00-ClassroomName-professorEmail' as a unique identifier
   date: string; // 'YYYY-MM-DD' format
   day: string; // Day of the week (e.g., 'Monday')
   time: string; // Start time of the 60-min slot (e.g., '08:00')
+  classroom: string; // Added classroom
   duration: number; // Now always 60 minutes
   isAvailable: boolean; // Professor sets this for student booking
   bookedBy: string | null; // Student or Professor email if booked
@@ -36,17 +37,23 @@ interface ProfessorBookingViewSlot {
   date: string; // 'YYYY-MM-DD'
   day: string; // Day of the week
   time: string; // Start time (e.g., '08:00')
+  classroom: string; // Added classroom
   duration: number; // Always 60 min
   professorEmail: string; // The professor offering the slot
   isBookedByCurrentUser: boolean; // Whether the current professor booked this
   bookingTime: string | null; // ISO string, needed for cancellation check
 }
 
+// Define the structure for the classroom schedule assignment (loaded from admin)
+interface ScheduleAssignment {
+    professor: string; // Professor email assigned to this classroom at this time, or '' if unassigned
+}
+
 
 // Key for storing all professors' availability (now date-specific slots) in localStorage
 const ALL_PROFESSOR_AVAILABILITY_KEY = 'allProfessorAvailability';
-// Key for admin-defined classroom schedule (hourly template)
-const CLASSROOM_SCHEDULE_KEY = 'classroomSchedule';
+// Key for admin-defined classroom schedule (hourly template with classroom)
+const CLASSROOM_SCHEDULE_KEY = 'classroomSchedule_v2'; // Use the new key
 // Key for logged-in user info
 const LOGGED_IN_USER_KEY = 'loggedInUser';
 
@@ -120,10 +127,10 @@ export function ProfessorInterface() {
       return;
     }
 
-    // 1. Load admin's hourly schedule template
+    // 1. Load admin's hourly schedule template with classrooms
     const storedSchedule = localStorage.getItem(CLASSROOM_SCHEDULE_KEY);
-    let classroomSchedule: Record<string, string> = {};
-    if (storedSchedule) { try { classroomSchedule = JSON.parse(storedSchedule); } catch (e) { console.error("Impossibile analizzare classroomSchedule", e); classroomSchedule = {}; }}
+    let classroomSchedule: Record<string, ScheduleAssignment> = {};
+    if (storedSchedule) { try { classroomSchedule = JSON.parse(storedSchedule); } catch (e) { console.error("Impossibile analizzare classroomSchedule_v2", e); classroomSchedule = {}; }}
 
     // 2. Load all existing bookable slots
     const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
@@ -153,22 +160,28 @@ export function ProfessorInterface() {
     // 5. Get existing slots specific to the current professor and selected date for lookup
     const professorExistingSlotsMap = new Map<string, BookableSlot>(
       professorOfferedSlots
-        .filter(slot => slot && slot.date === formattedDate && slot.duration === 60)
-        .map(slot => [slot.id, slot])
+        .filter(slot => slot && slot.date === formattedDate && slot.duration === 60 && slot.classroom) // Ensure classroom exists
+        .map(slot => [slot.id, slot]) // Key is the unique slot ID (includes classroom)
     );
 
-    // 6. Generate potential 60-minute slots based ONLY on admin schedule assignments for this professor on the selected day
+    // 6. Generate potential 60-minute slots based ONLY on admin schedule assignments for this professor on the selected day in SPECIFIC CLASSROOMS
     const generatedSlots: BookableSlot[] = [];
-    Object.entries(classroomSchedule).forEach(([hourlyKey, assignedEmail]) => {
-      const [day, hourTime] = hourlyKey.split('-');
-      if (day === dayOfWeekString && assignedEmail === currentUserEmail && hourTime.endsWith(':00')) {
-        const slotId = `${formattedDate}-${hourTime}-${currentUserEmail}`;
+    Object.entries(classroomSchedule).forEach(([scheduleKey, assignment]) => {
+      // Key format: "Day-Time-Classroom"
+      const parts = scheduleKey.split('-');
+      if (parts.length < 3) return; // Invalid key format
+      const day = parts[0];
+      const hourTime = parts[1];
+      const classroom = parts.slice(2).join('-'); // Handle potential hyphens in classroom names
+
+      if (day === dayOfWeekString && assignment.professor === currentUserEmail && hourTime.endsWith(':00')) {
+        const slotId = `${formattedDate}-${hourTime}-${classroom}-${currentUserEmail}`; // Unique ID including date, time, classroom, professor
         const existingSlotData = professorExistingSlotsMap.get(slotId);
+
         // Add slot only if it's not in the past or if it's already booked (to show its status)
         if (!isPastDate || existingSlotData?.bookedBy) {
             generatedSlots.push({
-              id: slotId, date: formattedDate, day: dayOfWeekString, time: hourTime, duration: 60,
-              // Availability is false for past slots unless explicitly set otherwise (e.g., if loaded from storage)
+              id: slotId, date: formattedDate, day: dayOfWeekString, time: hourTime, classroom: classroom, duration: 60,
               isAvailable: isPastDate ? false : (existingSlotData?.isAvailable ?? false),
               bookedBy: existingSlotData?.bookedBy ?? null,
               bookingTime: existingSlotData?.bookingTime ?? null,
@@ -178,8 +191,13 @@ export function ProfessorInterface() {
       }
     });
 
-    // Sort the generated daily slots by time
-    setDailySlots(sortSlotsByDateAndTime(generatedSlots));
+    // Sort the generated daily slots by time, then classroom
+    const sortedGeneratedSlots = generatedSlots.sort((a, b) => {
+        const timeCompare = a.time.localeCompare(b.time);
+        if (timeCompare !== 0) return timeCompare;
+        return a.classroom.localeCompare(b.classroom);
+    });
+    setDailySlots(sortedGeneratedSlots);
 
   }, [selectedDate, currentUserEmail]); // Rerun when date or user changes
 
@@ -204,9 +222,10 @@ export function ProfessorInterface() {
            // Only consider professors assigned to the current user, and exclude the user themselves
            if (assignedProfessorEmails.includes(profEmail) && profEmail !== currentUserEmail) {
                slots.forEach(slot => {
-                   if (slot && slot.id && slot.date && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail === profEmail && slot.duration === 60) {
+                   // Ensure slot structure is valid, includes classroom, and duration is 60
+                   if (slot && slot.id && slot.date && slot.day && slot.time && slot.classroom && typeof slot.isAvailable === 'boolean' && slot.professorEmail === profEmail && slot.duration === 60) {
                        const bookingViewSlot: ProfessorBookingViewSlot = {
-                           id: slot.id, date: slot.date, day: slot.day, time: slot.time, duration: 60,
+                           id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
                            professorEmail: slot.professorEmail,
                            isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
                            bookingTime: slot.bookingTime || null,
@@ -227,9 +246,10 @@ export function ProfessorInterface() {
             // Check slots from ANY professor (even unassigned/self initially) if they are booked by the current user
             if (profEmail !== currentUserEmail) { // Avoid listing self-bookings in this list
                  slots.forEach(slot => {
-                     if (slot && slot.id && slot.bookedBy === currentUserEmail && slot.duration === 60 && !processedBookedIds.has(slot.id)) {
+                     // Ensure slot structure is valid, includes classroom, and duration is 60
+                     if (slot && slot.id && slot.classroom && slot.bookedBy === currentUserEmail && slot.duration === 60 && !processedBookedIds.has(slot.id)) {
                          const bookingViewSlot: ProfessorBookingViewSlot = {
-                             id: slot.id, date: slot.date, day: slot.day, time: slot.time, duration: 60,
+                             id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
                              professorEmail: slot.professorEmail,
                              isBookedByCurrentUser: true,
                              bookingTime: slot.bookingTime || null,
@@ -269,7 +289,7 @@ export function ProfessorInterface() {
 
              // Create a map of the updated slots for the current day for quick lookup
              // Filter out invalid slot data before creating the map
-             const validUpdatedSlotsForDay = updatedSlotsForDay.filter(slot => slot && slot.id && slot.date && slot.time && slot.duration === 60);
+             const validUpdatedSlotsForDay = updatedSlotsForDay.filter(slot => slot && slot.id && slot.date && slot.time && slot.classroom && slot.duration === 60);
              const updatedDaySlotMap = new Map(validUpdatedSlotsForDay.map(slot => [slot.id, slot]));
 
 
@@ -279,7 +299,7 @@ export function ProfessorInterface() {
 
 
              // Filter out potentially invalid slots before sorting and saving
-             const validatedSlots = newProfessorSlots.filter(slot => slot && slot.date && slot.time && slot.duration === 60);
+             const validatedSlots = newProfessorSlots.filter(slot => slot && slot.date && slot.time && slot.classroom && slot.duration === 60);
 
              allProfessorAvailability[currentUserEmail] = sortSlotsByDateAndTime(validatedSlots);
              localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
@@ -307,7 +327,7 @@ export function ProfessorInterface() {
     // Persist the change using the save function for OWN availability
     saveOwnAvailability(updatedDailySlots); // Pass all slots for the current day to ensure correct merging
 
-    toast({ title: updatedSlot.isAvailable ? "Slot Reso Disponibile" : "Slot Reso Non Disponibile", description: `Slot alle ${slotToToggle.time} del ${format(selectedDate, 'dd/MM/yyyy', { locale: it })} è ora ${updatedSlot.isAvailable ? 'disponibile' : 'non disponibile'}.` });
+    toast({ title: updatedSlot.isAvailable ? "Slot Reso Disponibile" : "Slot Reso Non Disponibile", description: `Slot alle ${slotToToggle.time} in ${slotToToggle.classroom} del ${format(selectedDate, 'dd/MM/yyyy', { locale: it })} è ora ${updatedSlot.isAvailable ? 'disponibile' : 'non disponibile'}.` });
   };
 
   // Function to cancel a booking MADE BY OTHERS for THIS professor's slots
@@ -343,8 +363,9 @@ export function ProfessorInterface() {
         // Prepare email details BEFORE updating the slot
         const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
         const formattedTime = slotToCancel.time;
-        const eventTitle = `Lezione con Prof. ${currentUserEmail}`;
-        const { deleteLink } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitle, eventTitle);
+        const classroomInfo = slotToCancel.classroom; // Get classroom
+        const eventTitle = `Lezione in ${classroomInfo} con Prof. ${currentUserEmail}`;
+        const { deleteLink } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitle, eventTitle, classroomInfo);
 
 
         // Update the slot to be available again
@@ -364,7 +385,7 @@ export function ProfessorInterface() {
           await sendEmail({
             to: bookerEmail,
             subject: 'Lezione Cancellata dal Professore',
-            html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata dal professore.</p>
+            html: `<p>Ciao,</p><p>La tua lezione in ${classroomInfo} con il Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata dal professore.</p>
                    <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLink}">Rimuovi dal Calendario</a></p>`,
           });
 
@@ -372,7 +393,7 @@ export function ProfessorInterface() {
           await sendEmail({
             to: currentUserEmail, // Send to self
             subject: 'Conferma Cancellazione Lezione Effettuata',
-            html: `<p>Ciao Prof. ${currentUserEmail},</p><p>Hai cancellato la prenotazione di ${bookerEmail} per il giorno ${formattedDate} alle ore ${formattedTime}. Lo slot è di nuovo disponibile.</p>`,
+            html: `<p>Ciao Prof. ${currentUserEmail},</p><p>Hai cancellato la prenotazione di ${bookerEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}. Lo slot è di nuovo disponibile.</p>`,
           });
         } catch (emailError) {
            console.error("Errore invio email di cancellazione (professore):", emailError);
@@ -388,9 +409,9 @@ export function ProfessorInterface() {
         loadAndGenerateOwnSlots(); // Reloads dailySlots and professorBookedSlots
         loadSlotsToBook(); // Also refresh the booking tab
 
-        toast({ title: "Prenotazione Cancellata", description: `Prenotazione da ${bookerEmail} per ${formattedDate} alle ${formattedTime} cancellata. Lo slot è di nuovo disponibile.` });
+        toast({ title: "Prenotazione Cancellata", description: `Prenotazione da ${bookerEmail} per ${formattedDate} alle ${formattedTime} in ${classroomInfo} cancellata. Lo slot è di nuovo disponibile.` });
     }
-  }, [currentUserEmail, loadAndGenerateOwnSlots, toast, loadSlotsToBook]); // Removed saveOwnAvailability dependency
+  }, [currentUserEmail, loadAndGenerateOwnSlots, toast, loadSlotsToBook]);
 
 
   // --- Functions for Booking Lessons with OTHER Professors ---
@@ -456,10 +477,13 @@ export function ProfessorInterface() {
            // Prepare email details
             const formattedDate = format(parseISO(slotToBook.date), 'dd/MM/yyyy', { locale: it });
             const formattedTime = slotToBook.time;
-            const eventTitleBooker = `Lezione con Prof. ${slotToBook.professorEmail}`;
-            const eventTitleProfessor = `Lezione con Prof. ${currentUserEmail}`;
-            const { addLink: addLinkBooker } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleBooker, eventTitleBooker, `Lezione prenotata con ${slotToBook.professorEmail}`);
-            const { addLink: addLinkProfessor } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleProfessor, eventTitleProfessor, `Lezione prenotata da ${currentUserEmail}`);
+            const classroomInfo = slotToBook.classroom; // Get classroom
+            const eventTitleBooker = `Lezione in ${classroomInfo} con Prof. ${slotToBook.professorEmail}`;
+            const eventTitleProfessor = `Lezione in ${classroomInfo} con Prof. ${currentUserEmail}`;
+            const descriptionBooker = `Lezione prenotata con ${slotToBook.professorEmail} in ${classroomInfo}.`;
+            const descriptionProfessor = `Lezione prenotata da ${currentUserEmail} in ${classroomInfo}.`;
+            const { addLink: addLinkBooker } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleBooker, eventTitleBooker, classroomInfo, descriptionBooker);
+            const { addLink: addLinkProfessor } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleProfessor, eventTitleProfessor, classroomInfo, descriptionProfessor);
 
 
             // Send confirmation emails
@@ -468,7 +492,7 @@ export function ProfessorInterface() {
               await sendEmail({
                 to: currentUserEmail,
                 subject: 'Conferma Prenotazione Lezione con Collega',
-                html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p>
+                html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p>
                        <p>Aggiungi al tuo calendario Google: <a href="${addLinkBooker}">Aggiungi al Calendario</a></p>`,
               });
 
@@ -476,7 +500,7 @@ export function ProfessorInterface() {
               await sendEmail({
                 to: slotToBook.professorEmail,
                 subject: 'Nuova Prenotazione Ricevuta da Collega',
-                html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dal Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime}.</p>
+                html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dal Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}.</p>
                        <p>Aggiungi al tuo calendario Google: <a href="${addLinkProfessor}">Aggiungi al Calendario</a></p>`,
               });
             } catch (emailError) {
@@ -492,7 +516,7 @@ export function ProfessorInterface() {
            // Refresh the lists related to booking lessons
            loadSlotsToBook(); // Reloads availableSlotsToBook and myBookedLessons
 
-           toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata per il ${formattedDate} alle ${formattedTime}.` });
+           toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata per il ${formattedDate} alle ${formattedTime} in ${classroomInfo}.` });
        }
    }, [currentUserEmail, assignedProfessorEmails, loadSlotsToBook, toast]);
 
@@ -557,10 +581,11 @@ export function ProfessorInterface() {
            // Prepare email details
            const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
            const formattedTime = slotToCancel.time;
-           const eventTitleBooker = `Lezione con Prof. ${slotToCancel.professorEmail}`;
-           const eventTitleProfessor = `Lezione con Prof. ${currentUserEmail}`;
-           const { deleteLink: deleteLinkBooker } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleBooker, eventTitleBooker);
-           const { deleteLink: deleteLinkProfessor } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleProfessor, eventTitleProfessor);
+           const classroomInfo = slotToCancel.classroom; // Get classroom
+           const eventTitleBooker = `Lezione in ${classroomInfo} con Prof. ${slotToCancel.professorEmail}`;
+           const eventTitleProfessor = `Lezione in ${classroomInfo} con Prof. ${currentUserEmail}`;
+           const { deleteLink: deleteLinkBooker } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleBooker, eventTitleBooker, classroomInfo);
+           const { deleteLink: deleteLinkProfessor } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleProfessor, eventTitleProfessor, classroomInfo);
 
 
            // Send cancellation emails
@@ -569,7 +594,7 @@ export function ProfessorInterface() {
              await sendEmail({
                to: currentUserEmail,
                subject: 'Conferma Cancellazione Lezione con Collega',
-               html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
+               html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
                       <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkBooker}">Rimuovi dal Calendario</a></p>`,
              });
 
@@ -577,7 +602,7 @@ export function ProfessorInterface() {
              await sendEmail({
                to: slotToCancel.professorEmail,
                subject: 'Prenotazione Cancellata da Collega',
-               html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione del Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
+               html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione del Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata.</p>
                       <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>`,
              });
            } catch (emailError) {
@@ -594,7 +619,7 @@ export function ProfessorInterface() {
            // Refresh the lists related to booking lessons
            loadSlotsToBook(); // Reloads availableSlotsToBook and myBookedLessons
 
-           toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} il ${formattedDate} alle ${formattedTime} è stata cancellata.` });
+           toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} il ${formattedDate} alle ${formattedTime} in ${classroomInfo} è stata cancellata.` });
        }
    }, [currentUserEmail, loadSlotsToBook, toast]);
 
@@ -612,7 +637,7 @@ export function ProfessorInterface() {
                  <Card className="w-full">
                     <CardHeader>
                         <CardTitle>Gestisci la Tua Disponibilità</CardTitle>
-                        <CardDescription>Seleziona una data per gestire i tuoi slot prenotabili da 60 minuti all'interno dei tuoi orari assegnati.</CardDescription>
+                        <CardDescription>Seleziona una data per gestire i tuoi slot prenotabili da 60 minuti all'interno delle tue aule/orari assegnati.</CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-6 md:grid-cols-2">
                         <div className="flex justify-center">
@@ -633,19 +658,20 @@ export function ProfessorInterface() {
                             ) : (
                                 <div className="overflow-x-auto border rounded-md max-h-96">
                                   <Table>
-                                    <TableHeader><TableRow><TableHead className="w-24">Ora</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead>Stato</TableHead><TableHead className="w-40 text-center">Azioni</TableHead><TableHead>Info Prenotazione</TableHead></TableRow></TableHeader>
+                                    <TableHeader><TableRow><TableHead className="w-24">Ora</TableHead><TableHead>Aula</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead>Stato</TableHead><TableHead className="w-40 text-center">Azioni</TableHead><TableHead>Info Prenotazione</TableHead></TableRow></TableHeader>
                                     <TableBody>
                                       {dailySlots.map((slot) => {
                                         const isBooked = !!slot.bookedBy;
                                         const isPastSlot = selectedDate ? isBefore(selectedDate, startOfDay(new Date())) : false; // Check if the slot's date is past
                                         const isPast = isPastSlot && !isBooked; // Consider it past only if not booked
-                                        const statusText = isBooked ? 'Prenotato' : (slot.isAvailable ? 'Disponibile per Prenotazione' : 'Non Disponibile');
+                                        const statusText = isBooked ? 'Prenotato' : (slot.isAvailable ? 'Disponibile' : 'Non Disponibile');
                                         const statusColor = isBooked ? 'text-gray-500' : (slot.isAvailable ? 'text-green-600' : 'text-red-600');
 
 
                                         return (
                                           <TableRow key={slot.id}>
                                             <TableCell>{slot.time}</TableCell>
+                                            <TableCell>{slot.classroom}</TableCell>
                                             <TableCell className="text-center">{slot.duration} min</TableCell>
                                             <TableCell className={`${statusColor} font-medium`}>{statusText}</TableCell>
                                             <TableCell className="text-center">
@@ -665,7 +691,7 @@ export function ProfessorInterface() {
                                                                  : 'bg-green-600 hover:bg-green-700'
                                                          )}
                                                      >
-                                                         {slot.isAvailable ? 'Rendi Non Disponibile' : 'Rendi Disponibile'}
+                                                         {slot.isAvailable ? 'Rendi Non Disp.' : 'Rendi Disp.'}
                                                      </Button>
                                                  )}
                                              </TableCell>
@@ -694,16 +720,17 @@ export function ProfessorInterface() {
                            ) : (
                                <div className="overflow-x-auto border rounded-md max-h-96">
                                    <Table>
-                                       <TableHeader><TableRow><TableHead className="w-32">Data</TableHead><TableHead className="w-24">Ora</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead>Prenotato Da</TableHead><TableHead>Ora Prenotazione</TableHead><TableHead className="w-40 text-center">Azioni</TableHead></TableRow></TableHeader>
+                                       <TableHeader><TableRow><TableHead className="w-32">Data</TableHead><TableHead className="w-24">Ora</TableHead><TableHead>Aula</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead>Prenotato Da</TableHead><TableHead>Ora Prenotazione</TableHead><TableHead className="w-40 text-center">Azioni</TableHead></TableRow></TableHeader>
                                        <TableBody>
                                            {professorBookedSlots.map((slot) => {
                                                if (!slot || !slot.id) return null; // Basic check
-                                                let lessonDateTime; try { lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`); } catch { return <TableRow key={`booked-prof-${slot.id}`}><TableCell colSpan={6}>Dati slot non validi</TableCell></TableRow>; }
+                                                let lessonDateTime; try { lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`); } catch { return <TableRow key={`booked-prof-${slot.id}`}><TableCell colSpan={7}>Dati slot non validi</TableCell></TableRow>; }
                                                 const isPastLesson = isBefore(lessonDateTime, new Date());
                                                return (
                                                    <TableRow key={`booked-prof-${slot.id}`}>
                                                        <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                                                        <TableCell>{slot.time}</TableCell>
+                                                       <TableCell>{slot.classroom}</TableCell>
                                                        <TableCell className="text-center">{slot.duration} min</TableCell>
                                                        <TableCell>{slot.bookedBy}</TableCell>
                                                        <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm', { locale: it }) : 'N/A'}</TableCell>
@@ -746,12 +773,13 @@ export function ProfessorInterface() {
                                  ) : (
                                      <div className="overflow-x-auto border rounded-md max-h-96">
                                          <Table>
-                                             <TableHeader><TableRow><TableHead className="w-32">Data</TableHead><TableHead className="w-24">Ora</TableHead><TableHead>Professore</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead className="w-28 text-center">Azioni</TableHead></TableRow></TableHeader>
+                                             <TableHeader><TableRow><TableHead className="w-32">Data</TableHead><TableHead className="w-24">Ora</TableHead><TableHead>Aula</TableHead><TableHead>Professore</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead className="w-28 text-center">Azioni</TableHead></TableRow></TableHeader>
                                              <TableBody>
                                                  {availableSlotsToBook.map((slot) => (
                                                      <TableRow key={`available-to-book-${slot.id}`}>
                                                          <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                                                          <TableCell>{slot.time}</TableCell>
+                                                         <TableCell>{slot.classroom}</TableCell>
                                                          <TableCell>{slot.professorEmail}</TableCell>
                                                          <TableCell className="text-center">{slot.duration} min</TableCell>
                                                          <TableCell className="text-center">
@@ -776,16 +804,17 @@ export function ProfessorInterface() {
                             ) : (
                                  <div className="overflow-x-auto border rounded-md max-h-96">
                                    <Table>
-                                     <TableHeader><TableRow><TableHead className="w-32">Data</TableHead><TableHead className="w-24">Ora</TableHead><TableHead>Professore</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead className="w-40 text-center">Azioni</TableHead></TableRow></TableHeader>
+                                     <TableHeader><TableRow><TableHead className="w-32">Data</TableHead><TableHead className="w-24">Ora</TableHead><TableHead>Aula</TableHead><TableHead>Professore</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead className="w-40 text-center">Azioni</TableHead></TableRow></TableHeader>
                                      <TableBody>
                                        {myBookedLessons.map((slot) => {
-                                         let lessonDateTime; try { lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`); } catch { return <TableRow key={`my-booked-${slot.id}`}><TableCell colSpan={5}>Dati slot non validi</TableCell></TableRow>; }
+                                         let lessonDateTime; try { lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`); } catch { return <TableRow key={`my-booked-${slot.id}`}><TableCell colSpan={6}>Dati slot non validi</TableCell></TableRow>; }
                                          const isPastLesson = isBefore(lessonDateTime, new Date());
                                          const canCancel = !isPastLesson && differenceInHours(lessonDateTime, new Date()) >= 24;
                                          return (
                                            <TableRow key={`my-booked-${slot.id}`}>
                                              <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                                              <TableCell>{slot.time}</TableCell>
+                                             <TableCell>{slot.classroom}</TableCell>
                                              <TableCell>{slot.professorEmail}</TableCell>
                                              <TableCell className="text-center">{slot.duration} min</TableCell>
                                              <TableCell className="text-center">
@@ -810,4 +839,3 @@ export function ProfessorInterface() {
     </div>
   );
 }
-

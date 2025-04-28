@@ -25,10 +25,11 @@ import type {DisplayUser} from '@/types/display-user'; // Use DisplayUser type
 
 // Define the structure of a bookable slot (from professor/student perspective)
 interface BookableSlot {
-    id: string;
+    id: string; // 'YYYY-MM-DD-HH:00-ClassroomName-professorEmail'
     date: string; // 'YYYY-MM-DD'
     day: string;
     time: string; // 'HH:MM'
+    classroom: string; // Added classroom
     duration: number; // e.g., 60
     isAvailable: boolean;
     bookedBy: string | null; // Student or Professor email
@@ -36,17 +37,30 @@ interface BookableSlot {
     professorEmail: string; // The email of the professor offering the slot
 }
 
+// Define the structure for the classroom schedule assignment
+interface ScheduleAssignment {
+    professor: string; // Professor email assigned to this classroom at this time, or '' if unassigned
+    // Classroom name is part of the key in the schedule state
+}
+
+
 // Key for storing all professors' availability (date-specific slots) in localStorage
 const ALL_PROFESSOR_AVAILABILITY_KEY = 'allProfessorAvailability';
-// Key for classroom schedule
-const CLASSROOM_SCHEDULE_KEY = 'classroomSchedule';
+// Key for classroom schedule - structure changed
+const CLASSROOM_SCHEDULE_KEY = 'classroomSchedule_v2'; // Use a new key to avoid conflicts with old format
+// Key for logged-in user info
+const LOGGED_IN_USER_KEY = 'loggedInUser';
+
+// Define available classrooms
+const classrooms = ['Aula 1 Grande', 'Aula 2 Piccola'];
 
 
 export function AdminInterface() {
   const [pendingRegistrations, setPendingRegistrations] = useState<DisplayUser[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<DisplayUser[]>([]); // State for approved users
   const [professors, setProfessors] = useState<string[]>([]);
-  const [schedule, setSchedule] = useState<Record<string, string>>({}); // Key: "Day-Time", Value: Professor Email or ""
+  // New schedule structure: Key: "Day-Time-Classroom", Value: { professor: string }
+  const [schedule, setSchedule] = useState<Record<string, ScheduleAssignment>>({});
   const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]); // State for all booked slots
   const [isManageProfessorsDialogOpen, setIsManageProfessorsDialogOpen] = useState(false);
   // State to hold the user (student OR professor) selected for professor assignment
@@ -83,7 +97,7 @@ export function AdminInterface() {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         // Basic check to avoid parsing non-user/non-schedule items
-        if (key && ![CLASSROOM_SCHEDULE_KEY, 'availableSlots', 'loggedInUser', ALL_PROFESSOR_AVAILABILITY_KEY].includes(key)) { // Exclude known non-user keys
+        if (key && ![CLASSROOM_SCHEDULE_KEY, 'availableSlots', LOGGED_IN_USER_KEY, ALL_PROFESSOR_AVAILABILITY_KEY].includes(key)) { // Exclude known non-user keys
           try {
             const item = localStorage.getItem(key);
             if (item) {
@@ -126,7 +140,7 @@ export function AdminInterface() {
       setApprovedUsers(loadedApproved);
       setProfessors(loadedProfessors.sort()); // Sort professors alphabetically
 
-      // Load All Booked Slots (remains the same)
+      // Load All Booked Slots
       const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
       let allProfessorAvailability: Record<string, BookableSlot[]> = {}; // Key: professorEmail
         if (storedAvailability) {
@@ -147,14 +161,33 @@ export function AdminInterface() {
         const loadedAllBooked: BookableSlot[] = [];
         // Iterate through each professor's list of slots
          Object.values(allProfessorAvailability).flat().forEach(slot => {
-             // Validate the slot structure and check if it's booked
-             if (slot && slot.id && slot.date && slot.time && slot.bookedBy && slot.professorEmail && slot.duration === 60) {
+             // Validate the slot structure and check if it's booked and includes classroom
+             if (slot && slot.id && slot.date && slot.time && slot.classroom && slot.bookedBy && slot.professorEmail && slot.duration === 60) {
                 loadedAllBooked.push(slot);
              }
          });
 
         // Sort and set the state
         setAllBookedSlots(sortSlots(loadedAllBooked));
+
+         // Load the new classroom schedule structure
+         const storedSchedule = localStorage.getItem(CLASSROOM_SCHEDULE_KEY);
+         if (storedSchedule) {
+             try {
+                 const parsedSchedule = JSON.parse(storedSchedule);
+                 if (typeof parsedSchedule === 'object' && parsedSchedule !== null) {
+                     setSchedule(parsedSchedule);
+                 } else {
+                     console.warn("Formato orario classroom non valido trovato in localStorage.");
+                     setSchedule({});
+                 }
+             } catch (e) {
+                 console.error("Impossibile analizzare classroomSchedule", e);
+                 setSchedule({});
+             }
+         } else {
+             setSchedule({}); // Initialize empty if nothing is stored
+         }
     }
   }, []); // Empty dependency array, will run on mount
 
@@ -164,35 +197,8 @@ export function AdminInterface() {
   }, [loadData]);
 
 
-  // Load schedule from local storage on component mount (remains the same)
+  // Save schedule to local storage whenever it changes (uses new key)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedSchedule = localStorage.getItem(CLASSROOM_SCHEDULE_KEY);
-      if (storedSchedule) {
-        try {
-          const parsedSchedule = JSON.parse(storedSchedule);
-           // Basic validation: Check if it's an object
-           if (typeof parsedSchedule === 'object' && parsedSchedule !== null) {
-               setSchedule(parsedSchedule);
-           } else {
-                console.warn("Formato orario non valido trovato in localStorage. Inizializzazione orario vuoto.");
-                setSchedule({}); // Initialize empty if format is wrong
-           }
-        } catch (e) {
-          console.error("Impossibile analizzare classroomSchedule da localStorage", e);
-           setSchedule({}); // Initialize empty on parsing error
-          // Optionally clear the invalid data
-          // localStorage.removeItem('classroomSchedule');
-        }
-      } else {
-          setSchedule({}); // Initialize empty if nothing is stored
-      }
-    }
-  }, []); // Empty dependency array ensures this runs only on mount
-
-  // Save schedule to local storage whenever it changes (remains the same)
-  useEffect(() => {
-     // Only save if schedule is not empty, prevents overwriting on initial load before data is ready
      if (typeof window !== 'undefined' && Object.keys(schedule).length > 0) {
        localStorage.setItem(CLASSROOM_SCHEDULE_KEY, JSON.stringify(schedule));
      }
@@ -286,7 +292,7 @@ export function AdminInterface() {
      }
    };
 
-  // Function to generate time slots (HOURLY) (remains the same)
+  // Function to generate time slots (HOURLY)
   function generateTimeSlots() {
     const slots = [];
     for (let hour = 7; hour <= 22; hour++) {
@@ -296,20 +302,22 @@ export function AdminInterface() {
   }
 
   const timeSlots = generateTimeSlots();
-  // Add Saturday and Sunday
   const days = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']; // Italian days
 
-  const handleProfessorChange = (day: string, time: string, professorEmail: string) => {
-    const key = `${day}-${time}`;
+  const handleProfessorAssignmentChange = (day: string, time: string, classroom: string, professorEmail: string) => {
+    const key = `${day}-${time}-${classroom}`; // Include classroom in the key
+    const newAssignment: ScheduleAssignment = {
+        professor: professorEmail === 'unassigned' ? '' : professorEmail
+    };
     setSchedule(prevSchedule => {
-        const newSchedule = { ...prevSchedule, [key]: professorEmail === 'unassigned' ? '' : professorEmail };
+        const newSchedule = { ...prevSchedule, [key]: newAssignment };
         // Save to localStorage immediately after state update
         if (typeof window !== 'undefined') {
             localStorage.setItem(CLASSROOM_SCHEDULE_KEY, JSON.stringify(newSchedule));
         }
         return newSchedule;
     });
-  };
+};
 
 
   // Updated function to handle saving assigned professors for ANY user (student or professor)
@@ -379,7 +387,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
               <Card>
                  <CardHeader>
                      <CardTitle>Orario Aule</CardTitle>
-                     <CardDescription>Assegna professori agli slot orari disponibili.</CardDescription>
+                     <CardDescription>Assegna professori agli slot orari nelle aule disponibili.</CardDescription>
                  </CardHeader>
                  <CardContent>
                      <div className="overflow-x-auto">
@@ -387,48 +395,61 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                              <TableHeader>
                                  <TableRow>
                                      <TableHead className="min-w-[80px] w-24 sticky left-0 bg-background z-10">Ora</TableHead>
-                                     {/* Map over the updated days array */}
+                                     {/* Map over days */}
                                      {days.map((day) => (
-                                         <TableHead key={day} className="min-w-[200px] w-48">{day}</TableHead>
+                                         <TableHead key={day} colSpan={classrooms.length} className="text-center border-l border-r min-w-[400px] w-96">{day}</TableHead>
                                      ))}
+                                 </TableRow>
+                                 <TableRow>
+                                     <TableHead className="sticky left-0 bg-background z-10">Aula</TableHead>
+                                     {/* Repeat classroom headers for each day */}
+                                     {days.map((day) =>
+                                        classrooms.map((classroom) => (
+                                            <TableHead key={`${day}-${classroom}`} className="min-w-[200px] w-48 border-l text-center">{classroom}</TableHead>
+                                        ))
+                                     )}
                                  </TableRow>
                              </TableHeader>
                              <TableBody>
                                  {timeSlots.map((time) => (
                                      <TableRow key={time}>
                                          <TableCell className="font-medium sticky left-0 bg-background z-10">{time}</TableCell>
-                                         {/* Map over the updated days array */}
+                                         {/* Map over days and classrooms */}
                                          {days.map((day) => {
-                                            const scheduleKey = `${day}-${time}`;
-                                            const assignedProfessor = schedule[scheduleKey] || ''; // Default to empty string if undefined
-                                            return (
-                                                <TableCell
-                                                    key={scheduleKey}
-                                                    className={cn(
-                                                        assignedProfessor ? 'bg-green-100 dark:bg-green-900' : ''
-                                                    )}
-                                                >
-                                                    <Select
-                                                        value={assignedProfessor || 'unassigned'} // Ensure value corresponds to an item or 'unassigned'
-                                                        onValueChange={(value) => handleProfessorChange(day, time, value)}
+                                            return classrooms.map((classroom) => {
+                                                const scheduleKey = `${day}-${time}-${classroom}`;
+                                                const assignment = schedule[scheduleKey];
+                                                const assignedProfessor = assignment?.professor || ''; // Default to empty string if no assignment or no professor
+                                                return (
+                                                    <TableCell
+                                                        key={scheduleKey}
+                                                        className={cn(
+                                                            'border-l',
+                                                            assignedProfessor ? 'bg-green-100 dark:bg-green-900' : ''
+                                                        )}
                                                     >
-                                                        <SelectTrigger className="w-full">
-                                                            {/* Display professor email or placeholder */}
-                                                            <SelectValue placeholder="Assegna Professore">
-                                                                {assignedProfessor || "Assegna Professore"}
-                                                            </SelectValue>
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="unassigned">Non Assegnato</SelectItem>
-                                                            {professors.map((profEmail) => (
-                                                                <SelectItem key={profEmail} value={profEmail}>
-                                                                    {profEmail}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </TableCell>
-                                            );
+                                                        <Select
+                                                            value={assignedProfessor || 'unassigned'} // Ensure value corresponds to an item or 'unassigned'
+                                                            onValueChange={(value) => handleProfessorAssignmentChange(day, time, classroom, value)}
+                                                        >
+                                                            <SelectTrigger className="w-full">
+                                                                {/* Display professor email or placeholder */}
+                                                                <SelectValue placeholder="Assegna Professore">
+                                                                    {assignedProfessor || "Assegna"}
+                                                                </SelectValue>
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="unassigned">Non Assegnato</SelectItem>
+                                                                {professors.map((profEmail) => (
+                                                                    <SelectItem key={profEmail} value={profEmail}>
+                                                                        {profEmail}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </TableCell>
+                                                );
+                                            });
                                          })}
                                      </TableRow>
                                  ))}
@@ -529,7 +550,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                  </CardContent>
              </Card>
             </TabsContent>
-            {/* New Bookings Tab Content (remains the same) */}
+            {/* Updated Bookings Tab Content */}
             <TabsContent value="bookings">
                  <Card>
                      <CardHeader>
@@ -544,8 +565,9 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                          <TableRow>
                                              <TableHead>Data</TableHead>
                                              <TableHead>Ora</TableHead>
+                                             <TableHead>Aula</TableHead> {/* Added Classroom Header */}
                                              <TableHead>Professore</TableHead>
-                                             <TableHead>Studente/Professore</TableHead> {/* Updated Header */}
+                                             <TableHead>Studente/Professore</TableHead>
                                              <TableHead>Ora Prenotazione</TableHead>
                                          </TableRow>
                                      </TableHeader>
@@ -554,8 +576,9 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                              <TableRow key={`booked-${slot.id}`}>
                                                  <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy')}</TableCell>
                                                  <TableCell>{slot.time}</TableCell>
+                                                 <TableCell>{slot.classroom}</TableCell> {/* Display Classroom */}
                                                  <TableCell>{slot.professorEmail}</TableCell>
-                                                 <TableCell>{slot.bookedBy}</TableCell> {/* Show booker email */}
+                                                 <TableCell>{slot.bookedBy}</TableCell>
                                                  <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm') : 'N/A'}</TableCell>
                                              </TableRow>
                                          ))}

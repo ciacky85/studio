@@ -13,12 +13,13 @@ import type { UserData } from '@/types/user'; // Import UserData type
 import { sendEmail } from '@/services/email'; // Import the email service
 import { getCalendarLinksFromSlot } from '@/lib/calendar-utils'; // Import calendar utils
 
-// Define the structure of a slot as seen by the student (now 60 min)
+// Define the structure of a slot as seen by the student (now 60 min with classroom)
 interface StudentSlotView {
-  id: string; // 'YYYY-MM-DD-HH:00-professorEmail' unique ID
+  id: string; // 'YYYY-MM-DD-HH:00-ClassroomName-professorEmail' unique ID
   date: string; // 'YYYY-MM-DD'
   day: string; // Day of the week
   time: string; // Start time (e.g., '08:00')
+  classroom: string; // Added classroom
   duration: number; // Now always 60 min
   professorEmail: string;
   isBookedByCurrentUser: boolean;
@@ -31,6 +32,7 @@ interface BookableSlot {
   date: string;
   day: string;
   time: string;
+  classroom: string; // Added classroom
   duration: number;
   isAvailable: boolean;
   bookedBy: string | null;
@@ -118,10 +120,10 @@ export function StudentInterface() {
      // Iterate through ALL professors to find slots available from ASSIGNED professors AND slots booked by the user
      Object.entries(allProfessorAvailability).forEach(([profEmail, slots]) => {
          slots.forEach(slot => {
-             // Validate the slot structure and ensure duration is 60
-             if (slot && slot.id && slot.date && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail && slot.duration === 60) {
+             // Validate the slot structure, ensure duration is 60, and classroom exists
+             if (slot && slot.id && slot.date && slot.day && slot.time && slot.classroom && typeof slot.isAvailable === 'boolean' && slot.professorEmail && slot.duration === 60) {
                 const studentViewSlot: StudentSlotView = {
-                    id: slot.id, date: slot.date, day: slot.day, time: slot.time, duration: 60,
+                    id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
                     professorEmail: slot.professorEmail,
                     isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
                     bookingTime: slot.bookingTime || null,
@@ -220,10 +222,13 @@ export function StudentInterface() {
         // Prepare email details
         const formattedDate = format(parseISO(slotToBook.date), 'dd/MM/yyyy', { locale: it });
         const formattedTime = slotToBook.time;
-        const eventTitleStudent = `Lezione con Prof. ${slotToBook.professorEmail}`;
-        const eventTitleProfessor = `Lezione con Studente ${currentUserEmail}`;
-        const { addLink: addLinkStudent } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleStudent, eventTitleStudent, `Lezione prenotata con ${slotToBook.professorEmail}`);
-        const { addLink: addLinkProfessor } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleProfessor, eventTitleProfessor, `Lezione prenotata da ${currentUserEmail}`);
+        const classroomInfo = slotToBook.classroom; // Get classroom
+        const eventTitleStudent = `Lezione in ${classroomInfo} con Prof. ${slotToBook.professorEmail}`;
+        const eventTitleProfessor = `Lezione in ${classroomInfo} con Studente ${currentUserEmail}`;
+        const descriptionStudent = `Lezione prenotata con ${slotToBook.professorEmail} in ${classroomInfo}.`;
+        const descriptionProfessor = `Lezione prenotata da ${currentUserEmail} in ${classroomInfo}.`;
+        const { addLink: addLinkStudent } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleStudent, eventTitleStudent, classroomInfo, descriptionStudent);
+        const { addLink: addLinkProfessor } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleProfessor, eventTitleProfessor, classroomInfo, descriptionProfessor);
 
 
         // Send confirmation emails
@@ -232,7 +237,7 @@ export function StudentInterface() {
           await sendEmail({
             to: currentUserEmail,
             subject: 'Conferma Prenotazione Lezione',
-            html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p>
+            html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p>
                    <p>Aggiungi al tuo calendario Google: <a href="${addLinkStudent}">Aggiungi al Calendario</a></p>`,
           });
 
@@ -240,7 +245,7 @@ export function StudentInterface() {
           await sendEmail({
             to: slotToBook.professorEmail,
             subject: 'Nuova Prenotazione Ricevuta',
-            html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dallo studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime}.</p>
+            html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dallo studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}.</p>
                    <p>Aggiungi al tuo calendario Google: <a href="${addLinkProfessor}">Aggiungi al Calendario</a></p>`,
           });
         } catch (emailError) {
@@ -257,7 +262,7 @@ export function StudentInterface() {
 
         loadSlots(); // Refresh UI
 
-        toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata per il ${formattedDate} alle ${formattedTime}. Email di conferma inviate.` });
+        toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata per il ${formattedDate} alle ${formattedTime} in ${classroomInfo}. Email di conferma inviate.` });
     }
   }, [currentUserEmail, assignedProfessorEmails, loadSlots, toast]);
 
@@ -319,10 +324,11 @@ export function StudentInterface() {
              // Prepare email details
              const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
              const formattedTime = slotToCancel.time;
-             const eventTitleStudent = `Lezione con Prof. ${slotToCancel.professorEmail}`;
-             const eventTitleProfessor = `Lezione con Studente ${currentUserEmail}`;
-             const { deleteLink: deleteLinkStudent } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleStudent, eventTitleStudent);
-             const { deleteLink: deleteLinkProfessor } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleProfessor, eventTitleProfessor);
+             const classroomInfo = slotToCancel.classroom; // Get classroom
+             const eventTitleStudent = `Lezione in ${classroomInfo} con Prof. ${slotToCancel.professorEmail}`;
+             const eventTitleProfessor = `Lezione in ${classroomInfo} con Studente ${currentUserEmail}`;
+             const { deleteLink: deleteLinkStudent } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleStudent, eventTitleStudent, classroomInfo);
+             const { deleteLink: deleteLinkProfessor } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleProfessor, eventTitleProfessor, classroomInfo);
 
 
              // Send cancellation emails
@@ -331,7 +337,7 @@ export function StudentInterface() {
                await sendEmail({
                  to: currentUserEmail,
                  subject: 'Conferma Cancellazione Lezione',
-                 html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
+                 html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
                         <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkStudent}">Rimuovi dal Calendario</a></p>`,
                });
 
@@ -339,7 +345,7 @@ export function StudentInterface() {
                await sendEmail({
                  to: slotToCancel.professorEmail,
                  subject: 'Prenotazione Cancellata',
-                 html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione dello studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
+                 html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione dello studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata.</p>
                         <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>`,
                });
              } catch (emailError) {
@@ -355,7 +361,7 @@ export function StudentInterface() {
 
             loadSlots(); // Refresh UI
 
-            toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} il ${formattedDate} alle ${formattedTime} è stata cancellata.` });
+            toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} il ${formattedDate} alle ${formattedTime} in ${classroomInfo} è stata cancellata.` });
        }
    }, [currentUserEmail, loadSlots, toast]);
 
@@ -390,8 +396,7 @@ export function StudentInterface() {
                selected={selectedDate}
                onSelect={setSelectedDate}
                className="rounded-md border"
-               // Disable past dates, but allow selection to see past bookings if needed?
-               // For simplicity, let's keep disabling past dates for booking.
+               // Disable past dates
                disabled={(date) => isBefore(date, startOfDay(new Date()))}
              />
            </div>
@@ -413,6 +418,7 @@ export function StudentInterface() {
                               <TableHeader>
                                   <TableRow>
                                     <TableHead className="w-24">Ora</TableHead>
+                                    <TableHead>Aula</TableHead>
                                     <TableHead>Professore</TableHead>
                                     <TableHead className="w-20 text-center">Durata</TableHead>
                                     <TableHead className="w-28 text-center">Azioni</TableHead>
@@ -422,6 +428,7 @@ export function StudentInterface() {
                                 {filteredAvailableSlots.map((slot) => (
                                     <TableRow key={`available-${slot.id}`}>
                                       <TableCell>{slot.time}</TableCell>
+                                      <TableCell>{slot.classroom}</TableCell>
                                       <TableCell>{slot.professorEmail}</TableCell>
                                       <TableCell className="text-center">{slot.duration} min</TableCell>
                                       <TableCell className="text-center">
@@ -463,6 +470,7 @@ export function StudentInterface() {
                    <TableRow>
                      <TableHead className="w-32">Data</TableHead>
                      <TableHead className="w-24">Ora</TableHead>
+                     <TableHead>Aula</TableHead>
                      <TableHead>Professore</TableHead>
                      <TableHead className="w-20 text-center">Durata</TableHead>
                      <TableHead className="w-40 text-center">Azioni</TableHead>
@@ -470,13 +478,14 @@ export function StudentInterface() {
                  </TableHeader>
                  <TableBody>
                    {bookedSlots.map((slot) => {
-                    let lessonDateTime; try { lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`); } catch { return <TableRow key={`booked-${slot.id}`}><TableCell colSpan={5}>Dati slot non validi</TableCell></TableRow>; }
+                    let lessonDateTime; try { lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`); } catch { return <TableRow key={`booked-${slot.id}`}><TableCell colSpan={6}>Dati slot non validi</TableCell></TableRow>; }
                     const isPastLesson = isBefore(lessonDateTime, new Date());
                     const canCancel = !isPastLesson && differenceInHours(lessonDateTime, new Date()) >= 24;
                     return (
                        <TableRow key={`booked-${slot.id}`}>
                          <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                          <TableCell>{slot.time}</TableCell>
+                         <TableCell>{slot.classroom}</TableCell>
                          <TableCell>{slot.professorEmail}</TableCell>
                          <TableCell className="text-center">{slot.duration} min</TableCell>
                          <TableCell className="text-center">
@@ -506,4 +515,3 @@ export function StudentInterface() {
     </div>
   );
 }
-
