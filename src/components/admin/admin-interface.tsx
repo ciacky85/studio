@@ -20,15 +20,8 @@ import { format, parseISO } from 'date-fns'; // Import date-fns functions
 // Import the RENAMED generic dialog
 import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
 import { cn } from "@/lib/utils"; // Import cn for conditional classes
+import type {DisplayUser} from '@/types/display-user'; // Use DisplayUser type
 
-// Update DisplayUser interface slightly for clarity if needed (role already exists)
-interface DisplayUser {
-  id: number;
-  name: string;
-  role: 'student' | 'professor' | 'admin'; // Explicitly include professor and admin
-  email: string;
-  assignedProfessorEmails?: string[] | null; // Keep using this field name
-}
 
 // Define the structure of a bookable slot (from professor/student perspective)
 interface BookableSlot {
@@ -303,7 +296,8 @@ export function AdminInterface() {
   }
 
   const timeSlots = generateTimeSlots();
-  const days = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì']; // Italian days
+  // Add Saturday and Sunday
+  const days = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']; // Italian days
 
   const handleProfessorChange = (day: string, time: string, professorEmail: string) => {
     const key = `${day}-${time}`;
@@ -374,8 +368,9 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
         </CardHeader>
         <CardContent className="grid gap-4">
           {/* Use w-full or responsive width */}
+          {/* Update grid-cols to accommodate new days */}
           <Tabs defaultValue="classrooms" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3"> {/* Changed to 3 columns */}
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3"> {/* Kept 3 cols, tabs fit */}
               <TabsTrigger value="classrooms">Aule</TabsTrigger>
               <TabsTrigger value="users">Utenti</TabsTrigger>
               <TabsTrigger value="bookings">Prenotazioni</TabsTrigger> {/* New Tab */}
@@ -392,6 +387,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                              <TableHeader>
                                  <TableRow>
                                      <TableHead className="min-w-[80px] w-24 sticky left-0 bg-background z-10">Ora</TableHead>
+                                     {/* Map over the updated days array */}
                                      {days.map((day) => (
                                          <TableHead key={day} className="min-w-[200px] w-48">{day}</TableHead>
                                      ))}
@@ -401,6 +397,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                  {timeSlots.map((time) => (
                                      <TableRow key={time}>
                                          <TableCell className="font-medium sticky left-0 bg-background z-10">{time}</TableCell>
+                                         {/* Map over the updated days array */}
                                          {days.map((day) => {
                                             const scheduleKey = `${day}-${time}`;
                                             const assignedProfessor = schedule[scheduleKey] || ''; // Default to empty string if undefined
@@ -591,6 +588,3 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
     </>
   );
 }
-
-
-    

@@ -50,6 +50,7 @@ const CLASSROOM_SCHEDULE_KEY = 'classroomSchedule';
 // Key for logged-in user info
 const LOGGED_IN_USER_KEY = 'loggedInUser';
 
+// Add Saturday and Sunday
 const daysOfWeek = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato']; // Match getDay() output in Italian
 
 export function ProfessorInterface() {
