@@ -9,6 +9,7 @@ This is a Next.js application for managing classroom schedules, user registratio
     ```bash
     npm install
     ```
+    *Note: This command will also generate or update the `package-lock.json` file based on the dependencies listed in `package.json`.*
 
 2.  **Environment Variables:**
     Create a `.env` file in the root directory and add the necessary environment variables. You'll need credentials for Nodemailer (Gmail App Password) and potentially Google GenAI.
@@ -146,3 +147,4 @@ Deploying to a Synology NAS using Container Manager typically involves these ste
 5.  **Firewall:** Ensure your Synology NAS firewall (Control Panel -> Security -> Firewall) allows incoming traffic on the *local port* you mapped (e.g., 3000).
 
 *Note: Specific UI elements and steps within the Synology Container Manager application might vary slightly depending on the DSM (DiskStation Manager) version.*
+
