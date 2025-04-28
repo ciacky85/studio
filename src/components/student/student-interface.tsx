@@ -8,6 +8,7 @@ import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/c
 // import {Calendar} from '@/components/ui/calendar'; // Remove Calendar import
 import {useToast} from "@/hooks/use-toast";
 import { format, isBefore, startOfDay, parseISO, differenceInHours } from 'date-fns'; // Import date-fns functions
+import { it } from 'date-fns/locale'; // Import Italian locale
 
 // Define the structure of a slot as seen by the student (now 60 min)
 interface StudentSlotView {
@@ -38,7 +39,7 @@ export function StudentInterface() {
       return slots.sort((a, b) => {
           // Defensive check for invalid slot data before sorting
           if (!a?.date || !b?.date || !a?.time || !b?.time) {
-              console.warn('Attempted to sort invalid slot data:', a, b);
+              console.warn('Tentativo di ordinare dati slot non validi:', a, b);
               return 0; // Avoid erroring, maintain relative order
           }
           const dateCompare = a.date.localeCompare(b.date);
@@ -58,15 +59,15 @@ export function StudentInterface() {
            if (userData.role === 'student') {
               setCurrentUserEmail(userData.username);
            } else {
-               console.error("Logged in user is not a student.");
+               console.error("L'utente loggato non è uno studente.");
                // Optionally redirect or show error message
                // router.push('/');
            }
          } catch (e) {
-           console.error("Error parsing loggedInUser data:", e);
+           console.error("Errore durante il parsing dei dati loggedInUser:", e);
          }
        } else {
-         console.error("No user logged in.");
+         console.error("Nessun utente loggato.");
           // Optionally redirect or show error message
           // router.push('/');
        }
@@ -95,7 +96,7 @@ export function StudentInterface() {
                  allProfessorAvailability = {};
               }
          } catch (e) {
-             console.error("Failed to parse allProfessorAvailability", e);
+             console.error("Impossibile analizzare allProfessorAvailability", e);
              allProfessorAvailability = {};
          }
      }
@@ -129,7 +130,7 @@ export function StudentInterface() {
                           loadedAllAvailable.push(studentViewSlot); // Add to the main available list
                      }
                  } catch (parseError) {
-                     console.warn(`Could not parse date/time for slot ${slot.id}:`, parseError);
+                     console.warn(`Impossibile analizzare data/ora per lo slot ${slot.id}:`, parseError);
                  }
              }
 
@@ -139,10 +140,10 @@ export function StudentInterface() {
             }
          } else if (slot && slot.duration !== 60) {
              // Optionally log if we find slots with incorrect duration, might indicate old data
-             // console.warn(`Ignoring slot with incorrect duration (${slot.duration} min):`, slot);
+             // console.warn(`Ignorato slot con durata errata (${slot.duration} min):`, slot);
          } else {
               // Log if data structure is unexpected or incomplete
-              // console.warn(`Invalid or incomplete slot structure found:`, slot);
+              // console.warn(`Struttura slot non valida o incompleta trovata:`, slot);
          }
      });
 
@@ -173,22 +174,22 @@ export function StudentInterface() {
                 allProfessorAvailability = {};
             }
         } catch (e) {
-            console.error("Failed to parse allProfessorAvailability before booking", e);
-            toast({ variant: "destructive", title: "Booking Error", description: "Could not load schedule data." });
+            console.error("Impossibile analizzare allProfessorAvailability prima della prenotazione", e);
+            toast({ variant: "destructive", title: "Errore Prenotazione", description: "Impossibile caricare i dati dell'orario." });
             return;
         }
 
         // Find the specific professor's list of slots
         const professorSlots = allProfessorAvailability[slotToBook.professorEmail];
         if (!professorSlots || !Array.isArray(professorSlots)) {
-             toast({ variant: "destructive", title: "Booking Error", description: "Professor's schedule not found." });
+             toast({ variant: "destructive", title: "Errore Prenotazione", description: "Orario del professore non trovato." });
              return;
         }
 
         // Find the index of the specific slot to book
         const slotIndex = professorSlots.findIndex(s => s && s.id === slotToBook.id && s.duration === 60); // Ensure it's the correct slot ID and duration
         if (slotIndex === -1) {
-            toast({ variant: "destructive", title: "Booking Error", description: "Slot not found or invalid." });
+            toast({ variant: "destructive", title: "Errore Prenotazione", description: "Slot non trovato o non valido." });
             loadSlots(); // Refresh list in case it's outdated
             return;
         }
@@ -199,14 +200,14 @@ export function StudentInterface() {
         try {
            slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
         } catch (parseError) {
-            console.error("Could not parse date/time during booking check:", parseError);
-            toast({ variant: "destructive", title: "Booking Failed", description: "Invalid slot data." });
+            console.error("Impossibile analizzare data/ora durante il controllo della prenotazione:", parseError);
+            toast({ variant: "destructive", title: "Prenotazione Fallita", description: "Dati slot non validi." });
             loadSlots();
             return;
         }
 
         if (!originalSlot.isAvailable || originalSlot.bookedBy || isBefore(slotDateTime, new Date())) {
-             toast({ variant: "destructive", title: "Booking Failed", description: "Slot is no longer available or is in the past." });
+             toast({ variant: "destructive", title: "Prenotazione Fallita", description: "Lo slot non è più disponibile o è nel passato." });
              loadSlots(); // Refresh the list to show the current state
              return;
         }
@@ -225,16 +226,16 @@ export function StudentInterface() {
         // 5. Update UI state immediately by reloading slots
         loadSlots(); // Reload all slots to reflect the change
 
-        toast({ title: "Booking Successful", description: `Lesson with ${slotToBook.professorEmail} booked for ${format(parseISO(slotToBook.date), 'dd/MM/yyyy')} at ${slotToBook.time}.` });
+        toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata per il ${format(parseISO(slotToBook.date), 'dd/MM/yyyy')} alle ${slotToBook.time}.` });
 
         // Potential Email Confirmation (implement sendEmail service if needed)
         // try {
-        //   await sendEmail({ to: currentUserEmail, subject: 'Booking Confirmation', html: `...` });
-        //   await sendEmail({ to: slotToBook.professorEmail, subject: 'New Booking Notification', html: `...` });
+        //   await sendEmail({ to: currentUserEmail, subject: 'Conferma Prenotazione', html: `...` });
+        //   await sendEmail({ to: slotToBook.professorEmail, subject: 'Notifica Nuova Prenotazione', html: `...` });
         // } catch (emailError) {
-        //   console.error("Failed to send booking confirmation emails:", emailError);
+        //   console.error("Impossibile inviare email di conferma prenotazione:", emailError);
         //   // Optionally inform user, but booking itself succeeded
-        //   toast({ variant: "destructive", title: "Email Error", description: "Booking confirmed, but failed to send confirmation email." });
+        //   toast({ variant: "destructive", title: "Errore Email", description: "Prenotazione confermata, ma impossibile inviare email di conferma." });
         // }
 
     }
@@ -254,22 +255,22 @@ export function StudentInterface() {
                     allProfessorAvailability = {};
                  }
             } catch (e) {
-                 console.error("Failed to parse allProfessorAvailability before cancelling", e);
-                 toast({ variant: "destructive", title: "Cancellation Error", description: "Could not load schedule data." });
+                 console.error("Impossibile analizzare allProfessorAvailability prima della cancellazione", e);
+                 toast({ variant: "destructive", title: "Errore Cancellazione", description: "Impossibile caricare i dati dell'orario." });
                  return;
             }
 
            // Find the professor's slot list
            const professorSlots = allProfessorAvailability[slotToCancel.professorEmail];
             if (!professorSlots || !Array.isArray(professorSlots)) {
-                toast({ variant: "destructive", title: "Cancellation Error", description: "Professor's schedule not found." });
+                toast({ variant: "destructive", title: "Errore Cancellazione", description: "Orario del professore non trovato." });
                 return;
            }
 
             // Find the specific slot index
             const slotIndex = professorSlots.findIndex(s => s && s.id === slotToCancel.id && s.duration === 60);
             if (slotIndex === -1) {
-                toast({ variant: "destructive", title: "Cancellation Error", description: "Slot not found or invalid." });
+                toast({ variant: "destructive", title: "Errore Cancellazione", description: "Slot non trovato o non valido." });
                 loadSlots(); // Refresh UI
                 return;
             }
@@ -277,7 +278,7 @@ export function StudentInterface() {
 
            // 2. Verify the current user booked this slot
             if (originalSlot.bookedBy !== currentUserEmail) {
-                 toast({ variant: "destructive", title: "Cancellation Error", description: "You did not book this slot." });
+                 toast({ variant: "destructive", title: "Errore Cancellazione", description: "Non hai prenotato questo slot." });
                  loadSlots(); // Refresh UI just in case
                  return;
             }
@@ -287,8 +288,8 @@ export function StudentInterface() {
             try {
                 lessonStartTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`);
             } catch (parseError) {
-                 console.error("Could not parse date/time during cancellation check:", parseError);
-                 toast({ variant: "destructive", title: "Cancellation Failed", description: "Invalid slot data." });
+                 console.error("Impossibile analizzare data/ora durante il controllo della cancellazione:", parseError);
+                 toast({ variant: "destructive", title: "Cancellazione Fallita", description: "Dati slot non validi." });
                  loadSlots();
                  return;
             }
@@ -297,8 +298,8 @@ export function StudentInterface() {
             if (differenceInHours(lessonStartTime, now) < 24) {
                  toast({
                      variant: "destructive",
-                     title: "Cancellation Failed",
-                     description: "Cannot cancel a lesson less than 24 hours in advance.",
+                     title: "Cancellazione Fallita",
+                     description: "Impossibile cancellare una lezione meno di 24 ore prima.",
                      duration: 5000, // Show longer
                  });
                  return; // Stop cancellation
@@ -319,14 +320,14 @@ export function StudentInterface() {
            // 5. Update UI state immediately by reloading slots
            loadSlots(); // Reload all slots
 
-           toast({ title: "Booking Cancelled", description: `Your lesson with ${slotToCancel.professorEmail} on ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy')} at ${slotToCancel.time} has been cancelled.` });
+           toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} il ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy')} alle ${slotToCancel.time} è stata cancellata.` });
 
             // Potential Cancellation Email Notifications
             // try {
-            //    await sendEmail({ to: currentUserEmail, subject: 'Booking Cancellation Confirmation', html: `...` });
-            //    await sendEmail({ to: slotToCancel.professorEmail, subject: 'Booking Cancelled by Student', html: `...` });
+            //    await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Prenotazione', html: `...` });
+            //    await sendEmail({ to: slotToCancel.professorEmail, subject: 'Prenotazione Cancellata dallo Studente', html: `...` });
             // } catch (emailError) {
-            //      console.error("Failed to send cancellation emails:", emailError);
+            //      console.error("Impossibile inviare email di cancellazione:", emailError);
             // }
        }
    }, [currentUserEmail, loadSlots, toast]); // Include loadSlots and toast
@@ -336,8 +337,8 @@ export function StudentInterface() {
     <div className="flex flex-col gap-4 p-4 w-full">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>Student Interface</CardTitle>
-          <CardDescription>View and book available 60-minute lesson slots or manage your bookings.</CardDescription>
+          <CardTitle>Interfaccia Studente</CardTitle>
+          <CardDescription>Visualizza e prenota slot di lezione disponibili da 60 minuti o gestisci le tue prenotazioni.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6"> {/* Removed md:grid-cols-2 */}
             {/* Removed Calendar Selection */}
@@ -354,22 +355,22 @@ export function StudentInterface() {
            {/* Available Slots */}
            <div>
              <h3 className="text-lg font-semibold mb-3">
-                Available Slots for Booking
+                Slot Disponibili per la Prenotazione
              </h3>
              {allAvailableSlots.length === 0 ? (
                  <p className="text-muted-foreground p-4 text-center">
-                     No 60-minute slots currently available for booking.
+                     Nessuno slot da 60 minuti attualmente disponibile per la prenotazione.
                  </p>
              ) : (
                   <div className="overflow-x-auto border rounded-md max-h-96"> {/* Max height and scroll */}
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-32">Date</TableHead> {/* Added Date */}
-                          <TableHead className="w-24">Time</TableHead>
-                          <TableHead>Professor</TableHead>
-                          <TableHead className="w-20 text-center">Duration</TableHead>
-                          <TableHead className="w-28 text-center">Actions</TableHead>
+                          <TableHead className="w-32">Data</TableHead> {/* Added Date */}
+                          <TableHead className="w-24">Ora</TableHead>
+                          <TableHead>Professore</TableHead>
+                          <TableHead className="w-20 text-center">Durata</TableHead>
+                          <TableHead className="w-28 text-center">Azioni</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -382,7 +383,7 @@ export function StudentInterface() {
                               <TableCell>{slot.professorEmail}</TableCell>
                               <TableCell className="text-center">{slot.duration} min</TableCell>
                               <TableCell className="text-center">
-                                <Button onClick={() => bookSlot(slot)} size="sm">Book</Button>
+                                <Button onClick={() => bookSlot(slot)} size="sm">Prenota</Button>
                               </TableCell>
                             </TableRow>
                           );
@@ -396,19 +397,19 @@ export function StudentInterface() {
            {/* Booked Slots (Always Visible) */}
            {/* Removed md:col-span-2 as we no longer have columns */}
            <div>
-            <h3 className="text-lg font-semibold mb-3 mt-6">Your Booked Lessons</h3>
+            <h3 className="text-lg font-semibold mb-3 mt-6">Le Tue Lezioni Prenotate</h3>
             {bookedSlots.length === 0 ? (
-                 <p className="text-muted-foreground p-4 text-center">You haven't booked any lessons yet.</p>
+                 <p className="text-muted-foreground p-4 text-center">Non hai ancora prenotato nessuna lezione.</p>
             ) : (
                  <div className="overflow-x-auto border rounded-md max-h-96"> {/* Max height and scroll */}
                    <Table>
                      <TableHeader>
                        <TableRow>
-                         <TableHead className="w-32">Date</TableHead>
-                         <TableHead className="w-24">Time</TableHead>
-                         <TableHead>Professor</TableHead>
-                         <TableHead className="w-20 text-center">Duration</TableHead>
-                         <TableHead className="w-40 text-center">Actions</TableHead>
+                         <TableHead className="w-32">Data</TableHead>
+                         <TableHead className="w-24">Ora</TableHead>
+                         <TableHead>Professore</TableHead>
+                         <TableHead className="w-20 text-center">Durata</TableHead>
+                         <TableHead className="w-40 text-center">Azioni</TableHead>
                        </TableRow>
                      </TableHeader>
                      <TableBody>
@@ -418,7 +419,7 @@ export function StudentInterface() {
                              lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`);
                         } catch {
                              // Handle cases where date/time might be invalid temporarily
-                             return <TableRow key={`booked-${slot.id}`}><TableCell colSpan={5}>Invalid slot data</TableCell></TableRow>;
+                             return <TableRow key={`booked-${slot.id}`}><TableCell colSpan={5}>Dati slot non validi</TableCell></TableRow>;
                         }
 
                          // Check if cancellation is allowed (more than 24 hours before)
@@ -437,9 +438,9 @@ export function StudentInterface() {
                                  variant="destructive"
                                  size="sm"
                                  disabled={!canCancel} // Disable if within 24 hours
-                                 title={!canCancel ? "Cannot cancel less than 24 hours before" : "Cancel this booking"}
+                                 title={!canCancel ? "Impossibile cancellare meno di 24 ore prima" : "Cancella questa prenotazione"}
                                >
-                                 Cancel Booking
+                                 Cancella Prenotazione
                                </Button>
                              </TableCell>
                            </TableRow>
@@ -455,4 +456,3 @@ export function StudentInterface() {
     </div>
   );
 }
-

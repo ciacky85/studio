@@ -30,8 +30,8 @@ export default function Register() {
     if (!isFormValid) {
         toast({
             variant: "destructive",
-            title: "Missing Information",
-            description: "Please fill in all required fields.",
+            title: "Informazioni Mancanti",
+            description: "Per favore, compila tutti i campi richiesti.",
         });
         return; // Stop execution if form is invalid
     }
@@ -42,7 +42,7 @@ export default function Register() {
       // Check if user already exists in localStorage
       if (typeof window !== 'undefined') {
         if (localStorage.getItem(email)) {
-            throw new Error('User with this email already exists.');
+            throw new Error('Utente con questa email già esistente.');
         }
 
         // Simulate user creation: Store user data with 'approved: false'
@@ -52,14 +52,14 @@ export default function Register() {
         // Ensure the admin email is correct and reliable
         await sendEmail({
           to: 'carlo.checchi@gmail.com', // Consider making this configurable via environment variables
-          subject: 'New User Registration Pending Approval',
-          html: `<p>A new user has registered and requires approval:</p><ul><li>Email: ${email}</li><li>Role: ${role}</li></ul><p>Please log in to the admin panel to approve or reject.</p>`,
+          subject: 'Nuova Registrazione Utente in Attesa di Approvazione',
+          html: `<p>Un nuovo utente si è registrato e richiede approvazione:</p><ul><li>Email: ${email}</li><li>Ruolo: ${role}</li></ul><p>Accedi al pannello di amministrazione per approvare o rifiutare.</p>`,
         });
 
         setRegistrationStatus('success');
         toast({
-          title: "Registration Submitted",
-          description: "Your registration requires admin approval. You will be notified once approved.",
+          title: "Registrazione Inviata",
+          description: "La tua registrazione richiede l'approvazione dell'amministratore. Sarai avvisato una volta approvato.",
         });
 
         // Clear form fields after successful submission for better UX
@@ -71,16 +71,16 @@ export default function Register() {
          setTimeout(() => router.push('/'), 3000); // Increased delay
       } else {
         // Handle case where localStorage is not available (should not happen in browser)
-        throw new Error('Local storage is not available.');
+        throw new Error('Local storage non disponibile.');
       }
 
     } catch (error: any) {
-      console.error('Registration failed:', error);
+      console.error('Registrazione fallita:', error);
       setRegistrationStatus('error'); // Keep in 'error' state
       toast({
         variant: "destructive",
-        title: "Registration Failed",
-        description: error.message || "An unexpected error occurred. Please try again.",
+        title: "Registrazione Fallita",
+        description: error.message || "Si è verificato un errore inaspettato. Per favore riprova.",
       });
     }
   };
@@ -91,8 +91,8 @@ export default function Register() {
       <main className="flex flex-grow flex-col items-center justify-center p-4 sm:p-12 md:p-24">
         <Card className="w-full max-w-md p-4">
           <CardHeader>
-            <CardTitle>Register</CardTitle>
-            <CardDescription>Create an account to access the application.</CardDescription>
+            <CardTitle>Registrati</CardTitle>
+            <CardDescription>Crea un account per accedere all'applicazione.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-2">
@@ -100,7 +100,7 @@ export default function Register() {
               <Input
                 type="email"
                 id="email"
-                placeholder="example@example.com"
+                placeholder="esempio@esempio.com"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); if (registrationStatus === 'error') setRegistrationStatus('idle');}} // Reset from error on input change
                 disabled={registrationStatus === 'pending' || registrationStatus === 'success'} // Disable on pending/success
@@ -119,7 +119,7 @@ export default function Register() {
               />
             </div>
             <div className="grid gap-2">
-              <label htmlFor="role">Role</label>
+              <label htmlFor="role">Ruolo</label>
               <Select
                 onValueChange={(value) => { setRole(value as 'student' | 'professor'); if (registrationStatus === 'error') setRegistrationStatus('idle');}} // Reset from error on input change
                 value={role} // Ensure value is controlled
@@ -127,28 +127,28 @@ export default function Register() {
                 required // Added HTML5 validation
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select Role" />
+                  <SelectValue placeholder="Seleziona Ruolo" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="student">Student</SelectItem>
-                  <SelectItem value="professor">Professor</SelectItem>
+                  <SelectItem value="student">Studente</SelectItem>
+                  <SelectItem value="professor">Professore</SelectItem>
                 </SelectContent>
               </Select>
             </div>
              {registrationStatus === 'error' && (
-               <p className="text-sm text-destructive">Registration failed. Please check your input or try again later.</p>
+               <p className="text-sm text-destructive">Registrazione fallita. Controlla i dati inseriti o riprova più tardi.</p>
              )}
             <Button
               onClick={handleRegister}
               disabled={!isFormValid || registrationStatus === 'pending' || registrationStatus === 'success'} // Also disable on success to prevent double submission
             >
               {registrationStatus === 'pending'
-                ? 'Registering...'
+                ? 'Registrazione...'
                 : registrationStatus === 'success'
-                ? 'Submitted!'
+                ? 'Inviato!'
                 : registrationStatus === 'error'
-                ? 'Retry Registration' // Changed text for clarity
-                : 'Register'}
+                ? 'Riprova Registrazione' // Changed text for clarity
+                : 'Registrati'}
             </Button>
 
           </CardContent>

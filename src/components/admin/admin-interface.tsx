@@ -67,7 +67,7 @@ export function AdminInterface() {
               }
             }
           } catch (e) {
-            console.warn("Could not parse item from local storage for key (might not be user data):", key, e);
+            console.warn("Impossibile analizzare l'elemento da local storage per la chiave (potrebbero non essere dati utente):", key, e);
           }
         }
       }
@@ -94,11 +94,11 @@ export function AdminInterface() {
            if (typeof parsedSchedule === 'object' && parsedSchedule !== null) {
                setSchedule(parsedSchedule);
            } else {
-                console.warn("Invalid schedule format found in localStorage. Initializing empty schedule.");
+                console.warn("Formato orario non valido trovato in localStorage. Inizializzazione orario vuoto.");
                 setSchedule({}); // Initialize empty if format is wrong
            }
         } catch (e) {
-          console.error("Failed to parse classroomSchedule from localStorage", e);
+          console.error("Impossibile analizzare classroomSchedule da localStorage", e);
            setSchedule({}); // Initialize empty on parsing error
           // Optionally clear the invalid data
           // localStorage.removeItem('classroomSchedule');
@@ -132,8 +132,8 @@ export function AdminInterface() {
           // Send approval email
           await sendEmail({
             to: email,
-            subject: 'Registration Approved',
-            html: '<p>Your registration has been approved. You can now log in.</p>',
+            subject: 'Registrazione Approvata',
+            html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
           });
 
           // Update states: remove from pending, add to approved
@@ -148,19 +148,19 @@ export function AdminInterface() {
 
 
           toast({
-            title: "Registration Approved",
-            description: `Registration for ${email} has been approved.`,
+            title: "Registrazione Approvata",
+            description: `La registrazione per ${email} è stata approvata.`,
           });
         } catch (error) {
-           console.error("Error processing approval for:", email, error);
+           console.error("Errore durante l'approvazione per:", email, error);
            toast({
              variant: "destructive",
-             title: "Error Approving Registration",
-             description: `Failed to approve registration for ${email}. Error: ${error instanceof Error ? error.message : String(error)}`,
+             title: "Errore Approvazione Registrazione",
+             description: `Impossibile approvare la registrazione per ${email}. Errore: ${error instanceof Error ? error.message : String(error)}`,
            });
         }
       } else {
-         toast({ variant: "destructive", title: "Error", description: "User data not found." });
+         toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
       }
     }
   };
@@ -175,25 +175,25 @@ export function AdminInterface() {
            // Send rejection email
            await sendEmail({
              to: email,
-             subject: 'Registration Rejected',
-             html: '<p>Your registration has been rejected.</p>',
+             subject: 'Registrazione Rifiutata',
+             html: '<p>La tua registrazione è stata rifiutata.</p>',
            });
            // Remove from pending registrations state
            setPendingRegistrations(prev => prev.filter((reg) => reg.email !== email));
            toast({
-             title: "Registration Rejected",
-             description: `Registration for ${email} has been rejected.`,
+             title: "Registrazione Rifiutata",
+             description: `La registrazione per ${email} è stata rifiutata.`,
            });
          } catch (error) {
-            console.error("Error rejecting registration for:", email, error);
+            console.error("Errore durante il rifiuto della registrazione per:", email, error);
             toast({
               variant: "destructive",
-              title: "Error Rejecting Registration",
-              description: `Failed to send rejection email to ${email}. Error: ${error instanceof Error ? error.message : String(error)}`,
+              title: "Errore Rifiuto Registrazione",
+              description: `Impossibile inviare email di rifiuto a ${email}. Errore: ${error instanceof Error ? error.message : String(error)}`,
             });
          }
        } else {
-            toast({ variant: "destructive", title: "Error", description: "Registration not found in pending list." });
+            toast({ variant: "destructive", title: "Errore", description: "Registrazione non trovata nell'elenco in sospeso." });
        }
      }
    };
@@ -209,7 +209,7 @@ export function AdminInterface() {
   }
 
   const timeSlots = generateTimeSlots();
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const days = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì']; // Italian days
 
   const handleProfessorChange = (day: string, time: string, professorEmail: string) => {
     const key = `${day}-${time}`;
@@ -227,28 +227,28 @@ export function AdminInterface() {
     <div className="flex flex-col gap-4 p-4 w-full">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>Admin Interface</CardTitle>
-          <CardDescription>Manage user registrations and classroom availability.</CardDescription>
+          <CardTitle>Interfaccia Amministratore</CardTitle>
+          <CardDescription>Gestisci registrazioni utenti e disponibilità aule.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           {/* Use w-full or responsive width */}
           <Tabs defaultValue="classrooms" className="w-full">
             <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2">
-              <TabsTrigger value="classrooms">Classrooms</TabsTrigger>
-              <TabsTrigger value="users">Users</TabsTrigger>
+              <TabsTrigger value="classrooms">Aule</TabsTrigger>
+              <TabsTrigger value="users">Utenti</TabsTrigger>
             </TabsList>
             <TabsContent value="classrooms">
               <Card>
                  <CardHeader>
-                     <CardTitle>Classroom Schedule</CardTitle>
-                     <CardDescription>Assign professors to available time slots.</CardDescription>
+                     <CardTitle>Orario Aule</CardTitle>
+                     <CardDescription>Assegna professori agli slot orari disponibili.</CardDescription>
                  </CardHeader>
                  <CardContent>
                      <div className="overflow-x-auto">
                          <Table>
                              <TableHeader>
                                  <TableRow>
-                                     <TableHead className="min-w-[80px] w-24 sticky left-0 bg-background z-10">Time</TableHead>
+                                     <TableHead className="min-w-[80px] w-24 sticky left-0 bg-background z-10">Ora</TableHead>
                                      {days.map((day) => (
                                          <TableHead key={day} className="min-w-[200px] w-48">{day}</TableHead>
                                      ))}
@@ -269,12 +269,12 @@ export function AdminInterface() {
                                                     >
                                                         <SelectTrigger className="w-full">
                                                             {/* Display professor email or placeholder */}
-                                                            <SelectValue placeholder="Assign Professor">
-                                                                {assignedProfessor || "Assign Professor"}
+                                                            <SelectValue placeholder="Assegna Professore">
+                                                                {assignedProfessor || "Assegna Professore"}
                                                             </SelectValue>
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="unassigned">Unassigned</SelectItem>
+                                                            <SelectItem value="unassigned">Non Assegnato</SelectItem>
                                                             {professors.map((profEmail) => (
                                                                 <SelectItem key={profEmail} value={profEmail}>
                                                                     {profEmail}
@@ -296,8 +296,8 @@ export function AdminInterface() {
             <TabsContent value="users">
              <Card>
                  <CardHeader>
-                     <CardTitle>Pending Registrations</CardTitle>
-                     <CardDescription>Approve or reject new user registrations.</CardDescription>
+                     <CardTitle>Registrazioni in Sospeso</CardTitle>
+                     <CardDescription>Approva o rifiuta nuove registrazioni utente.</CardDescription>
                  </CardHeader>
                  <CardContent>
                      <div className="overflow-x-auto">
@@ -305,28 +305,28 @@ export function AdminInterface() {
                              <Table>
                                  <TableHeader>
                                      <TableRow>
-                                         <TableHead>Name</TableHead>
-                                         <TableHead>Role</TableHead>
+                                         <TableHead>Nome</TableHead>
+                                         <TableHead>Ruolo</TableHead>
                                          <TableHead>Email</TableHead>
-                                         <TableHead>Actions</TableHead>
+                                         <TableHead>Azioni</TableHead>
                                      </TableRow>
                                  </TableHeader>
                                  <TableBody>
                                      {pendingRegistrations.map((reg) => (
                                          <TableRow key={`pending-${reg.id}`}>
                                              <TableCell>{reg.name}</TableCell>
-                                             <TableCell>{reg.role}</TableCell>
+                                             <TableCell>{reg.role === 'professor' ? 'Professore' : 'Studente'}</TableCell>
                                              <TableCell>{reg.email}</TableCell>
                                              <TableCell className="flex flex-wrap gap-2">
-                                                 <Button onClick={() => approveRegistration(reg.email)} size="sm">Approve</Button>
-                                                 <Button onClick={() => rejectRegistration(reg.email)} variant="destructive" size="sm">Reject</Button>
+                                                 <Button onClick={() => approveRegistration(reg.email)} size="sm">Approva</Button>
+                                                 <Button onClick={() => rejectRegistration(reg.email)} variant="destructive" size="sm">Rifiuta</Button>
                                              </TableCell>
                                          </TableRow>
                                      ))}
                                  </TableBody>
                              </Table>
                          ) : (
-                             <p>No pending registrations.</p>
+                             <p>Nessuna registrazione in sospeso.</p>
                          )}
                      </div>
                  </CardContent>
@@ -334,8 +334,8 @@ export function AdminInterface() {
              <Separator className="my-4" />
              <Card>
                 <CardHeader>
-                     <CardTitle>Approved Users</CardTitle>
-                     <CardDescription>List of all registered and approved users.</CardDescription>
+                     <CardTitle>Utenti Approvati</CardTitle>
+                     <CardDescription>Elenco di tutti gli utenti registrati e approvati.</CardDescription>
                  </CardHeader>
                  <CardContent>
                      <div className="overflow-x-auto">
@@ -343,29 +343,29 @@ export function AdminInterface() {
                              <Table>
                                  <TableHeader>
                                      <TableRow>
-                                         <TableHead>Name</TableHead>
-                                         <TableHead>Role</TableHead>
+                                         <TableHead>Nome</TableHead>
+                                         <TableHead>Ruolo</TableHead>
                                          <TableHead>Email</TableHead>
                                          {/* Add Actions column if needed later */}
-                                         {/* <TableHead>Actions</TableHead> */}
+                                         {/* <TableHead>Azioni</TableHead> */}
                                      </TableRow>
                                  </TableHeader>
                                  <TableBody>
                                      {approvedUsers.map((user) => (
                                          <TableRow key={`approved-${user.id}`}>
                                              <TableCell>{user.name}</TableCell>
-                                             <TableCell>{user.role}</TableCell>
+                                             <TableCell>{user.role === 'professor' ? 'Professore' : 'Studente'}</TableCell>
                                              <TableCell>{user.email}</TableCell>
                                              {/* Add Action buttons if needed */}
                                              {/* <TableCell className="flex gap-2"> */}
-                                                {/* Example: <Button variant="outline" size="sm">Manage</Button> */}
+                                                {/* Example: <Button variant="outline" size="sm">Gestisci</Button> */}
                                              {/* </TableCell> */}
                                          </TableRow>
                                      ))}
                                  </TableBody>
                              </Table>
                          ) : (
-                             <p>No approved users found.</p>
+                             <p>Nessun utente approvato trovato.</p>
                          )}
                      </div>
                  </CardContent>

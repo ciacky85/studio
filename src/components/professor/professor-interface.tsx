@@ -8,6 +8,7 @@ import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/c
 import {Calendar} from '@/components/ui/calendar'; // Import Calendar
 import {useToast} from "@/hooks/use-toast";
 import { format, getDay, parseISO, startOfDay, isBefore } from 'date-fns'; // Import date-fns functions
+import { it } from 'date-fns/locale'; // Import Italian locale
 import { cn } from "@/lib/utils"; // Import cn utility
 import { Separator } from '@/components/ui/separator'; // Import Separator
 
@@ -31,7 +32,7 @@ const CLASSROOM_SCHEDULE_KEY = 'classroomSchedule';
 // Key for logged-in user info
 const LOGGED_IN_USER_KEY = 'loggedInUser';
 
-const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']; // Match getDay() output
+const daysOfWeek = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato']; // Match getDay() output in Italian
 
 export function ProfessorInterface() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date()); // Default to today
@@ -50,15 +51,15 @@ export function ProfessorInterface() {
           if (userData.role === 'professor') {
             setCurrentUserEmail(userData.username);
           } else {
-            console.error("Logged in user is not a professor.");
+            console.error("L'utente loggato non è un professore.");
             // Optionally redirect or show error message
             // router.push('/'); // Example redirect
           }
         } catch (e) {
-          console.error("Error parsing loggedInUser data:", e);
+          console.error("Errore durante il parsing dei dati loggedInUser:", e);
         }
       } else {
-         console.error("No user logged in.");
+         console.error("Nessun utente loggato.");
          // Optionally redirect or show error message
          // router.push('/'); // Example redirect
       }
@@ -70,7 +71,7 @@ export function ProfessorInterface() {
       return slots.sort((a, b) => {
           // Defensive check for invalid slot data before sorting
           if (!a?.date || !b?.date || !a?.time || !b?.time) {
-              console.warn('Attempted to sort invalid slot data:', a, b);
+              console.warn('Tentativo di ordinare dati slot non validi:', a, b);
               return 0; // Avoid erroring, maintain relative order
           }
           const dateCompare = a.date.localeCompare(b.date);
@@ -97,11 +98,11 @@ export function ProfessorInterface() {
          if (typeof parsedSchedule === 'object' && parsedSchedule !== null) {
             classroomSchedule = parsedSchedule;
          } else {
-            console.warn("Invalid classroom schedule format found in localStorage.");
+            console.warn("Formato orario aule non valido trovato in localStorage.");
             classroomSchedule = {}; // Reset if invalid
          }
       } catch (e) {
-        console.error("Failed to parse classroomSchedule", e);
+        console.error("Impossibile analizzare classroomSchedule", e);
         classroomSchedule = {};
       }
     }
@@ -115,11 +116,11 @@ export function ProfessorInterface() {
          if (typeof parsedAvailability === 'object' && parsedAvailability !== null) {
              allProfessorAvailability = parsedAvailability; // Reset if invalid
          } else {
-              console.warn("Invalid allProfessorAvailability format found in localStorage.");
+              console.warn("Formato allProfessorAvailability non valido trovato in localStorage.");
               allProfessorAvailability = {}; // Reset if invalid
          }
       } catch (e) {
-        console.error("Failed to parse allProfessorAvailability", e);
+        console.error("Impossibile analizzare allProfessorAvailability", e);
         allProfessorAvailability = {};
       }
     }
@@ -156,7 +157,7 @@ export function ProfessorInterface() {
     const generatedSlots: BookableSlot[] = [];
 
     Object.entries(classroomSchedule).forEach(([hourlyKey, assignedEmail]) => {
-      const [day, hourTime] = hourlyKey.split('-'); // e.g., "Monday", "08:00"
+      const [day, hourTime] = hourlyKey.split('-'); // e.g., "Lunedì", "08:00"
 
       // Check if the admin slot is for the selected day of the week AND assigned to the current professor
       if (day === dayOfWeekString && assignedEmail === currentUserEmail && hourTime.endsWith(':00')) {
@@ -217,7 +218,7 @@ export function ProfessorInterface() {
                         allProfessorAvailability = {};
                      }
                 } catch (e) {
-                    console.error("Failed to parse allProfessorAvailability before saving", e);
+                    console.error("Impossibile analizzare allProfessorAvailability prima del salvataggio", e);
                     allProfessorAvailability = {}; // Reset if parsing fails
                 }
             }
@@ -268,7 +269,7 @@ export function ProfessorInterface() {
     // Find the slot to toggle within the current daily view
     const slotToToggle = dailySlots.find(slot => slot.id === id);
     if (!slotToToggle || !selectedDate) { // Added check for selectedDate
-       console.error("Slot not found in daily view or date not selected:", id);
+       console.error("Slot non trovato nella vista giornaliera o data non selezionata:", id);
        return;
     }
 
@@ -276,8 +277,8 @@ export function ProfessorInterface() {
     if (slotToToggle.bookedBy) {
        toast({
            variant: "destructive",
-           title: "Action Denied",
-           description: "Cannot change availability of a booked slot. Cancel the booking first.",
+           title: "Azione Negata",
+           description: "Impossibile cambiare la disponibilità di uno slot prenotato. Cancella prima la prenotazione.",
        });
        return;
     }
@@ -297,8 +298,8 @@ export function ProfessorInterface() {
     saveProfessorAvailability([updatedSlot]); // Pass only the modified slot
 
     toast({
-        title: updatedSlot.isAvailable ? "Slot Made Available" : "Slot Made Unavailable",
-        description: `Slot at ${slotToToggle.time} on ${format(selectedDate, 'dd/MM/yyyy')} is now ${updatedSlot.isAvailable ? 'available for booking' : 'unavailable'}.` // Updated message
+        title: updatedSlot.isAvailable ? "Slot Reso Disponibile" : "Slot Reso Non Disponibile",
+        description: `Slot alle ${slotToToggle.time} del ${format(selectedDate, 'dd/MM/yyyy')} è ora ${updatedSlot.isAvailable ? 'disponibile per la prenotazione' : 'non disponibile'}.` // Updated message
     })
   };
 
@@ -316,22 +317,22 @@ export function ProfessorInterface() {
                  allProfessorAvailability = {};
              }
          } catch (e) {
-             console.error("Failed to parse allProfessorAvailability before cancelling", e);
-             toast({ variant: "destructive", title: "Cancellation Error", description: "Could not load schedule data." });
+             console.error("Impossibile analizzare allProfessorAvailability prima della cancellazione", e);
+             toast({ variant: "destructive", title: "Errore Cancellazione", description: "Impossibile caricare i dati dell'orario." });
              return;
          }
 
         // Find the professor's slot list
         let professorSlots = allProfessorAvailability[currentUserEmail];
         if (!professorSlots || !Array.isArray(professorSlots)) {
-            toast({ variant: "destructive", title: "Cancellation Error", description: "Your schedule data not found." });
+            toast({ variant: "destructive", title: "Errore Cancellazione", description: "Dati del tuo orario non trovati." });
             return;
         }
 
         // Find the index of the specific slot to cancel
         const slotIndex = professorSlots.findIndex(s => s && s.id === slotId && s.duration === 60);
         if (slotIndex === -1) {
-            toast({ variant: "destructive", title: "Cancellation Error", description: "Slot not found or invalid." });
+            toast({ variant: "destructive", title: "Errore Cancellazione", description: "Slot non trovato o non valido." });
             loadAndGenerateSlots(); // Refresh list
             return;
         }
@@ -340,7 +341,7 @@ export function ProfessorInterface() {
 
         // 2. Verify the slot is actually booked
         if (!studentEmail) {
-             toast({ variant: "destructive", title: "Cancellation Error", description: "This slot is not booked." });
+             toast({ variant: "destructive", title: "Errore Cancellazione", description: "Questo slot non è prenotato." });
              return;
         }
 
@@ -354,22 +355,23 @@ export function ProfessorInterface() {
 
 
         // Replace the old slot with the updated one in the professor's list
-        const updatedProfessorSlots = professorSlots.map(slot => slot.id === slotId ? updatedSlot : slot);
+        // No longer need this step as saveProfessorAvailability handles merging
+        // const updatedProfessorSlots = professorSlots.map(slot => slot.id === slotId ? updatedSlot : slot);
 
         // 5. Save updated data back to localStorage using the CENTRALIZED save function
-        // Need to pass the single updated slot to the centralized function for merging
+        // Pass the single updated slot to the centralized function for merging
         saveProfessorAvailability([updatedSlot]);
 
         // 6. Update UI state immediately by reloading slots (both daily and booked)
         loadAndGenerateSlots(); // This re-reads from the updated localStorage
 
-        toast({ title: "Booking Cancelled", description: `Booking for ${studentEmail} on ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy')} at ${slotToCancel.time} cancelled. Slot is now available.` }); // Updated toast message
+        toast({ title: "Prenotazione Cancellata", description: `Prenotazione per ${studentEmail} il ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy')} alle ${slotToCancel.time} cancellata. Lo slot è ora disponibile.` }); // Updated toast message
 
         // Potential Email Notification to Student (implement sendEmail service if needed)
         // try {
-        //    await sendEmail({ to: studentEmail, subject: 'Lesson Cancellation Notification', html: `...` });
+        //    await sendEmail({ to: studentEmail, subject: 'Notifica Cancellazione Lezione', html: `...` });
         // } catch (emailError) {
-        //     console.error("Failed to send cancellation email to student:", emailError);
+        //     console.error("Impossibile inviare email di cancellazione allo studente:", emailError);
         // }
     }
   }, [currentUserEmail, loadAndGenerateSlots, saveProfessorAvailability, toast]); // Dependencies
@@ -379,12 +381,13 @@ export function ProfessorInterface() {
     <div className="flex flex-col gap-6 p-4 w-full"> {/* Increased gap */}
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>Professor Interface</CardTitle>
-          <CardDescription>Select a date to manage your bookable 60-minute slots within your assigned times.</CardDescription>
+          <CardTitle>Interfaccia Professore</CardTitle>
+          <CardDescription>Seleziona una data per gestire i tuoi slot prenotabili da 60 minuti all'interno dei tuoi orari assegnati.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 md:grid-cols-2"> {/* Grid for Calendar + Table */}
           <div className="flex justify-center"> {/* Center Calendar */}
             <Calendar
+                locale={it} // Use Italian locale
                 mode="single"
                 selected={selectedDate}
                 onSelect={(date) => {
@@ -398,29 +401,29 @@ export function ProfessorInterface() {
 
           <div> {/* Table for the selected date */}
             <h3 className="text-lg font-semibold mb-3">
-              Manage Slots for {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : 'No date selected'} {/* Format selected date */}
+              Gestisci Slot per {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : 'Nessuna data selezionata'} {/* Format selected date */}
             </h3>
              {dailySlots.length === 0 ? (
                  <p className="text-muted-foreground p-4 text-center">
-                    {selectedDate ? (isBefore(selectedDate, startOfDay(new Date())) ? "Cannot manage slots for past dates." : `No 60-minute time slots assigned by admin for you on ${daysOfWeek[getDay(selectedDate)]}.`) : 'Select a date to view slots.'}
+                    {selectedDate ? (isBefore(selectedDate, startOfDay(new Date())) ? "Impossibile gestire slot per date passate." : `Nessuno slot orario da 60 minuti assegnato dall'admin per te il ${daysOfWeek[getDay(selectedDate)]}.`) : 'Seleziona una data per visualizzare gli slot.'}
                  </p>
              ) : (
                  <div className="overflow-x-auto border rounded-md max-h-96"> {/* Add max-height and scroll */}
                    <Table>
                      <TableHeader>
                        <TableRow>
-                         <TableHead className="w-24">Time</TableHead>
-                         <TableHead className="w-20 text-center">Duration</TableHead>
-                         <TableHead>Status</TableHead>
-                         <TableHead className="w-40 text-center">Actions</TableHead>
-                         <TableHead>Booking Info</TableHead>
+                         <TableHead className="w-24">Ora</TableHead>
+                         <TableHead className="w-20 text-center">Durata</TableHead>
+                         <TableHead>Stato</TableHead>
+                         <TableHead className="w-40 text-center">Azioni</TableHead>
+                         <TableHead>Info Prenotazione</TableHead>
                        </TableRow>
                      </TableHeader>
                      <TableBody>
                        {dailySlots.map((slot) => {
                          const isBooked = slot.bookedBy !== null;
                          // Updated status text for clarity
-                         const statusText = isBooked ? 'Booked' : (slot.isAvailable ? 'Available for Booking' : 'Not Available');
+                         const statusText = isBooked ? 'Prenotato' : (slot.isAvailable ? 'Disponibile per Prenotazione' : 'Non Disponibile');
                          const statusColor = isBooked ? 'text-muted-foreground' : (slot.isAvailable ? 'text-green-600' : 'text-red-600'); // Grey for booked
 
                          return (
@@ -436,7 +439,7 @@ export function ProfessorInterface() {
                                       disabled // Visually disable
                                       className="cursor-not-allowed text-muted-foreground font-normal px-1" // More subtle styling
                                   >
-                                      Booked
+                                      Prenotato
                                   </Button>
                               ) : (
                                   <Button
@@ -450,13 +453,13 @@ export function ProfessorInterface() {
                                           : 'bg-green-600 hover:bg-green-700' // Green for "Make Available"
                                     )}
                                   >
-                                    {slot.isAvailable ? 'Make Unavailable' : 'Make Available'}
+                                    {slot.isAvailable ? 'Rendi Non Disponibile' : 'Rendi Disponibile'}
                                   </Button>
                                 )}
                              </TableCell>
                              <TableCell>
                                {slot.bookedBy
-                                 ? `By ${slot.bookedBy}${slot.bookingTime ? ` (${format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm')})` : ''}`
+                                 ? `Da ${slot.bookedBy}${slot.bookingTime ? ` (${format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm')})` : ''}`
                                  : '—'} {/* Show dash if not booked */}
                              </TableCell>
                            </TableRow>
@@ -473,23 +476,23 @@ export function ProfessorInterface() {
        {/* All Booked Lessons Section */}
         <Card className="w-full">
              <CardHeader>
-                 <CardTitle>All Your Booked Lessons</CardTitle>
-                 <CardDescription>List of all lessons currently booked with you. You can cancel bookings from here.</CardDescription>
+                 <CardTitle>Tutte le Tue Lezioni Prenotate</CardTitle>
+                 <CardDescription>Elenco di tutte le lezioni attualmente prenotate con te. Puoi cancellare le prenotazioni da qui.</CardDescription>
              </CardHeader>
              <CardContent>
                 {allBookedSlots.length === 0 ? (
-                     <p className="text-muted-foreground p-4 text-center">No lessons are currently booked with you.</p>
+                     <p className="text-muted-foreground p-4 text-center">Nessuna lezione è attualmente prenotata con te.</p>
                  ) : (
                     <div className="overflow-x-auto border rounded-md max-h-96">
                        <Table>
                          <TableHeader>
                            <TableRow>
-                               <TableHead className="w-32">Date</TableHead>
-                               <TableHead className="w-24">Time</TableHead>
-                               <TableHead className="w-20 text-center">Duration</TableHead>
-                               <TableHead>Booked By</TableHead>
-                               <TableHead>Booking Time</TableHead>
-                               <TableHead className="w-40 text-center">Actions</TableHead>
+                               <TableHead className="w-32">Data</TableHead>
+                               <TableHead className="w-24">Ora</TableHead>
+                               <TableHead className="w-20 text-center">Durata</TableHead>
+                               <TableHead>Prenotato Da</TableHead>
+                               <TableHead>Ora Prenotazione</TableHead>
+                               <TableHead className="w-40 text-center">Azioni</TableHead>
                            </TableRow>
                          </TableHeader>
                          <TableBody>
@@ -509,7 +512,7 @@ export function ProfessorInterface() {
                                                  variant="destructive"
                                                  size="sm"
                                              >
-                                                 Cancel Booking
+                                                 Cancella Prenotazione
                                              </Button>
                                          </TableCell>
                                      </TableRow>
@@ -524,4 +527,3 @@ export function ProfessorInterface() {
     </div>
   );
 }
-

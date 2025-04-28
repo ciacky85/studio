@@ -27,7 +27,7 @@ export default function Home() {
            const userData = JSON.parse(storedUser);
            setRole(userData.role);
          } catch (e) {
-           console.error("Error parsing stored user data:", e);
+           console.error("Errore durante il parsing dei dati utente memorizzati:", e);
            localStorage.removeItem('loggedInUser'); // Clear invalid data
            setRole(null);
          }
@@ -93,7 +93,7 @@ export default function Home() {
               correctPassword = false;
           }
         } catch (error) {
-          console.error("Error parsing user data from localStorage:", error);
+          console.error("Errore durante il parsing dei dati utente da localStorage:", error);
           // Treat as invalid login attempt if parsing fails
         }
       }
@@ -104,12 +104,12 @@ export default function Home() {
         localStorage.setItem('loggedInUser', JSON.stringify({username: username, role: userRole}));
         // No need to push, role change triggers re-render
       } else if (userFound && correctPassword && !userApproved) {
-        setLoginError('Account not yet approved by admin.');
+        setLoginError('Account non ancora approvato dall\'amministratore.');
       } else if (userFound && !correctPassword) {
-        setLoginError('Invalid credentials.');
+        setLoginError('Credenziali non valide.');
       }
       else {
-        setLoginError('Invalid credentials or user not found.');
+        setLoginError('Credenziali non valide o utente non trovato.');
       }
     }
 
@@ -135,7 +135,7 @@ export default function Home() {
           <Card className="w-full max-w-md p-4">
             <CardHeader>
               <CardTitle>Login</CardTitle>
-              <CardDescription>Enter your credentials to access the application.</CardDescription>
+              <CardDescription>Inserisci le tue credenziali per accedere all'applicazione.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
@@ -145,7 +145,7 @@ export default function Home() {
                   id="username"
                   value={username}
                   onChange={(e) => { setUsername(e.target.value); setLoginError(null); }} // Clear error on input change
-                  placeholder="your.email@example.com"
+                  placeholder="tua.email@example.com"
                 />
               </div>
               <div className="grid gap-2">
@@ -162,7 +162,7 @@ export default function Home() {
               )}
               <Button onClick={handleLogin}>Login</Button>
               <Link href="/register" className="w-full">
-                <Button variant="outline" className="w-full">Register</Button>
+                <Button variant="outline" className="w-full">Registrati</Button>
               </Link>
             </CardContent>
           </Card>
