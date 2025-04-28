@@ -1,69 +1,49 @@
-# Use an official Node.js runtime as a parent image
-# Use Node.js 20 LTS (Iron)
-FROM node:20-slim AS base
-
-# Set the working directory in the container
+# Dockerfile
+# Fase 1: Installazione Dipendenze e Build
+FROM node:20-alpine AS deps
 WORKDIR /app
+COPY package.json package-lock.json* ./
+# Ensure lock file is copied if it exists, handle potential errors if not present
+# Use npm ci if lock file exists for deterministic installs, otherwise fallback to install
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-# Install pnpm globally - If you prefer npm or yarn, adjust accordingly
-# RUN npm install -g pnpm
-
-# Set up environment for production by default
-ENV NODE_ENV=production
-# Disable Genkit telemetry unless explicitly enabled
-ENV GENKIT_TELEMETRY_DISABLED=1
-
-# --- Dependencies Stage ---
-FROM base AS deps
+FROM node:20-alpine AS builder
 WORKDIR /app
-
-# Copy package.json and lock file
-# Use pnpm-lock.yaml if using pnpm, package-lock.json for npm, yarn.lock for yarn
-COPY package.json ./
-# COPY pnpm-lock.yaml ./
-COPY package-lock.json ./
-
-# Install dependencies using pnpm (adjust if using npm or yarn)
-# RUN pnpm install --frozen-lockfile --prod=false
-RUN npm install --frozen-lockfile --omit=dev
-
-# --- Builder Stage ---
-FROM base AS builder
-WORKDIR /app
-
-# Copy dependencies from the 'deps' stage
 COPY --from=deps /app/node_modules ./node_modules
+# Copy config files first to ensure they are available for the build context
+COPY tsconfig.json next.config.ts ./
+# Copy the rest of the application code
 COPY . .
 
-# Build the Next.js application
-# If using pnpm: RUN pnpm build
-# If using npm:
+# Build the application
+# The build process should now fail if there are underlying TypeScript or ESLint errors
+# because ignoreBuildErrors and ignoreDuringBuilds were removed from next.config.ts.
+# Fix any reported errors before proceeding.
 RUN npm run build
 
-# --- Runner Stage ---
-FROM base AS runner
+# Fase 2: Immagine di Produzione
+FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Copy necessary files from the builder stage
-COPY --from=builder /app/next.config.js ./
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-# Copy node_modules from the deps stage (contains only production deps)
-# Ensure node_modules are copied correctly for standalone output
-# The standalone output copies necessary node_modules itself,
-# so copying from 'deps' might not be needed or could conflict.
-# Verify if node_modules are correctly included in ./standalone/node_modules
-# If not, uncomment the line below:
-# COPY --from=deps /app/node_modules ./node_modules
+ENV NODE_ENV production
+# It's generally safer to run as a non-root user, but comment out for now
+# to simplify potential permission issues during debugging.
+# USER node
 
-# Expose the port the app runs on
+# Copy necessary files from the builder stage for standalone output
+COPY --from=builder /app/public ./public
+# Copy the standalone directory which includes server.js and necessary node_modules
+COPY --from=builder /app/.next/standalone ./
+# Copy static assets generated during the build
+COPY --from=builder /app/.next/static ./.next/static
+
+# If running as USER node, uncomment the following line after COPY commands
+# RUN chown -R node:node .
+
 EXPOSE 3000
 
-# Define the command to run the application
-# Use the Node.js server included in the standalone output
-CMD ["node", "server.js"]
+# Set port for the Node.js server inside the container
+ENV PORT 3000
 
-# Optional: Add healthcheck
-# HEALTHCHECK --interval=5m --timeout=3s \
-#   CMD curl -f http://localhost:3000 || exit 1
+# Command to start the application using the standalone server script
+CMD ["node", "server.js"]
