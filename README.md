@@ -1,3 +1,4 @@
+
 # Firebase Studio - Classroom Scheduler
 
 This is a Next.js application for managing classroom schedules, user registrations, and lesson bookings.
@@ -41,65 +42,107 @@ The application will typically run on port 3000 by default in production.
 
 ## Docker Deployment
 
-This application includes a `Dockerfile` for containerization.
+This application includes a `Dockerfile` and `docker-compose.yml` for containerization.
 
-### Building the Docker Image
+### Using Docker Compose (Recommended)
+
+Docker Compose simplifies the process of building and running multi-container Docker applications.
+
+1.  **Create `.env` File:** Ensure you have a `.env` file in the root directory with your environment variables (see "Environment Variables" section above).
+    ```plaintext
+    # .env
+    EMAIL_USER=your_gmail_address@gmail.com
+    EMAIL_PASS=your_gmail_app_password
+    # GOOGLE_GENAI_API_KEY=your_google_genai_api_key # Uncomment if needed
+    ```
+2.  **Build and Run with Docker Compose:**
+    From the root directory of the project, run:
+    ```bash
+    docker compose up -d --build
+    ```
+    *   `docker compose up`: Builds (if necessary) and starts the services defined in `docker-compose.yml`.
+    *   `-d`: Runs the containers in detached mode (in the background).
+    *   `--build`: Forces Docker Compose to build the image before starting the container. You might omit `--build` on subsequent runs if the code hasn't changed.
+
+3.  **Access Application:** The application should be accessible at `http://localhost:3000` (or the host port specified in `docker-compose.yml`).
+
+4.  **Stopping the Application:**
+    ```bash
+    docker compose down
+    ```
+    This stops and removes the containers defined in the `docker-compose.yml` file.
+
+### Manual Docker Build and Run
+
+#### Building the Docker Image
 
 From the root directory of the project, run:
 
 ```bash
 docker build -t classroom-scheduler .
+# OR to tag for GitHub Container Registry
+# docker build -t ghcr.io/<github-username>/classroom-scheduler:latest .
 ```
 
-You can optionally pass build arguments if needed (though runtime environment variables are preferred for secrets):
+*   Replace `<github-username>` with your GitHub username if pushing to GHCR.
 
-```bash
-# Example passing a build-time arg (less common for secrets)
-# docker build --build-arg GOOGLE_GENAI_API_KEY=your_key -t classroom-scheduler .
-```
+#### Running the Docker Container
 
-### Running the Docker Container
-
-To run the application inside a Docker container:
+To run the application inside a Docker container manually:
 
 ```bash
 docker run -p 3000:3000 \
-  -e EMAIL_USER="your_gmail_address@gmail.com" \
-  -e EMAIL_PASS="your_gmail_app_password" \
-  -e GOOGLE_GENAI_API_KEY="your_google_genai_api_key" \
+  --env-file .env \
   --name classroom-scheduler-app \
   -d classroom-scheduler
 ```
 
 **Explanation:**
 
-*   `-p 3000:3000`: Maps port 3000 on your host machine to port 3000 inside the container (where the Next.js app runs by default). Change the host port (the first `3000`) if it's already in use.
-*   `-e VARIABLE_NAME="value"`: Sets runtime environment variables required by the application inside the container. **Replace the placeholder values** with your actual credentials.
-*   `--name classroom-scheduler-app`: Assigns a name to the container for easier management.
-*   `-d`: Runs the container in detached mode (in the background).
-*   `classroom-scheduler`: The name of the image you built earlier.
+*   `-p 3000:3000`: Maps port 3000 on your host machine to port 3000 inside the container.
+*   `--env-file .env`: Loads environment variables from the `.env` file in the current directory. **Ensure the `.env` file exists where you run this command.**
+*   `--name classroom-scheduler-app`: Assigns a name to the container.
+*   `-d`: Runs the container in detached mode.
+*   `classroom-scheduler`: The name of the image you built.
 
-The application should then be accessible on your host machine at `http://localhost:3000` (or whichever host port you mapped).
+### Pushing to GitHub Container Registry (Optional)
 
-### Deployment on Synology NAS (General Steps)
+1.  **Build and Tag:**
+    ```bash
+    docker build -t ghcr.io/<github-username>/classroom-scheduler:latest .
+    ```
+2.  **Login:**
+    ```bash
+    docker login ghcr.io -u <github-username>
+    # Enter password or Personal Access Token
+    ```
+3.  **Push:**
+    ```bash
+    docker push ghcr.io/<github-username>/classroom-scheduler:latest
+    ```
 
-Deploying to a Synology NAS using Docker typically involves these steps:
+### Deployment on Synology NAS (Using Container Manager)
 
-1.  **Install Docker Package:** Ensure the Docker package is installed on your Synology NAS via the Package Center.
-2.  **Transfer Docker Image:** You can either:
-    *   Build the image directly on the NAS if it has sufficient resources and Docker build tools installed (less common).
-    *   Build the image on your development machine and push it to a container registry (like Docker Hub, GitLab Container Registry, GitHub Container Registry, or Synology's own Container Registry package). Then pull the image onto the NAS using the Docker app.
-    *   Build the image on your development machine, save it as a `.tar` file (`docker save -o classroom-scheduler.tar classroom-scheduler`), transfer the `.tar` file to your NAS, and load it using the Docker app (Image -> Add -> Add From File).
-3.  **Launch Container:**
-    *   Open the Docker application on your Synology NAS.
-    *   Go to the "Image" section, select the `classroom-scheduler` image, and click "Launch".
-    *   **Container Name:** Give your container a name (e.g., `classroom-scheduler-app`).
-    *   **Advanced Settings:**
-        *   **Port Settings:** Map a local port on your NAS (e.g., `3000`) to the container's port `3000` (TCP).
-        *   **Environment:** Add the required environment variables (`EMAIL_USER`, `EMAIL_PASS`, `GOOGLE_GENAI_API_KEY`) with their corresponding values. **Do not store sensitive information directly in configuration files if possible; use the environment variable section.**
-        *   **Volume (Optional but Recommended for Data):** Since this app currently uses `localStorage`, container data is ephemeral. For persistent data (if you switch from localStorage later, e.g., to a database), you would configure volume mappings here. For now, with `localStorage`, data persistence relies on the *browser*, not the container itself.
-    *   Review the summary and click "Done" or "Apply".
-4.  **Access Application:** Once the container is running, you should be able to access the application via your Synology NAS's IP address and the local port you mapped (e.g., `http://<your-nas-ip>:3000`).
-5.  **Firewall:** Ensure your Synology NAS firewall allows traffic on the mapped host port (e.g., 3000).
+Deploying to a Synology NAS using Container Manager typically involves these steps:
 
-*Note: Specific UI elements and steps within the Synology Docker application might vary slightly depending on the DSM (DiskStation Manager) version.*
+1.  **Install Container Manager:** Ensure the Container Manager package is installed via the Synology Package Center.
+2.  **Get Docker Image on NAS:**
+    *   **Option A (Pull from Registry):** If you pushed the image to a registry (like Docker Hub or GHCR), open Container Manager, go to "Registry", search for your image (e.g., `ghcr.io/<your-username>/classroom-scheduler`), and download (pull) the `latest` tag.
+    *   **Option B (Upload .tar file):** Build the image locally (`docker build -t classroom-scheduler .`), save it (`docker save -o classroom-scheduler.tar classroom-scheduler`), transfer `classroom-scheduler.tar` to your NAS (e.g., via File Station), then in Container Manager go to "Image", click "Add", choose "Add From File", and upload the `.tar` file.
+    *   **Option C (Use docker-compose.yml):** If you have SSH access to your NAS and Docker Compose installed *on the NAS*, you can transfer the entire project folder (including `docker-compose.yml` and `.env`), SSH into the NAS, navigate to the folder, and run `docker compose up -d`. This is more advanced.
+3.  **Launch Container (if using Option A or B):**
+    *   Go to the "Image" section in Container Manager.
+    *   Select the `classroom-scheduler` (or `ghcr.io/...`) image and click "Run" or "Launch".
+    *   **Container Name:** Give it a name (e.g., `ClassroomApp`).
+    *   **Enable auto-restart:** Recommended for web services.
+    *   **Port Settings:** Click "Add Port Setting". Set "Local Port" to `3000` (or another available port on your NAS), "Container Port" to `3000`, and Type to `TCP`.
+    *   **Environment Variables:** Go to the "Environment" section. Click "Add". Add *each* required variable:
+        *   `EMAIL_USER`: Enter your Gmail address.
+        *   `EMAIL_PASS`: Enter your Gmail App Password.
+        *   `GOOGLE_GENAI_API_KEY`: Enter your key (if used).
+        *   `NODE_ENV`: Set to `production`.
+    *   Review the summary and click "Done".
+4.  **Access Application:** Once the container is running (check the "Container" section), access it via `http://<your-nas-ip>:<local-port>` (e.g., `http://192.168.1.100:3000`).
+5.  **Firewall:** Ensure your Synology NAS firewall (Control Panel -> Security -> Firewall) allows incoming traffic on the *local port* you mapped (e.g., 3000).
+
+*Note: Specific UI elements and steps within the Synology Container Manager application might vary slightly depending on the DSM (DiskStation Manager) version.*
