@@ -9,6 +9,7 @@ import {useToast} from "@/hooks/use-toast";
 import { format, isBefore, startOfDay, parseISO, differenceInHours } from 'date-fns'; // Import date-fns functions
 import { it } from 'date-fns/locale'; // Import Italian locale
 import type { UserData } from '@/types/user'; // Import UserData type
+import { sendEmail } from '@/services/email'; // Import the email service
 
 // Define the structure of a slot as seen by the student (now 60 min)
 interface StudentSlotView {
@@ -158,7 +159,7 @@ export function StudentInterface() {
 
 
   // Function to book a slot
-  const bookSlot = useCallback((slotToBook: StudentSlotView) => {
+  const bookSlot = useCallback(async (slotToBook: StudentSlotView) => {
     if (typeof window !== 'undefined' && currentUserEmail) {
         // Check assignment again just before booking
         if (!assignedProfessorEmails || !assignedProfessorEmails.includes(slotToBook.professorEmail)) {
@@ -168,18 +169,35 @@ export function StudentInterface() {
 
         const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
         let allProfessorAvailability: Record<string, BookableSlot[]> = {};
-        try { allProfessorAvailability = storedAvailability ? JSON.parse(storedAvailability) : {}; } catch (e) { /*...*/ return; }
+        try { allProfessorAvailability = storedAvailability ? JSON.parse(storedAvailability) : {}; } catch (e) {
+            console.error("Errore analisi disponibilità:", e);
+            toast({ variant: "destructive", title: "Errore", description: "Impossibile caricare i dati di disponibilità." });
+            return;
+        }
 
         const professorSlots = allProfessorAvailability[slotToBook.professorEmail];
-        if (!professorSlots) { /*...*/ return; }
+        if (!professorSlots) {
+            console.error("Slot professore target non trovati:", slotToBook.professorEmail);
+            toast({ variant: "destructive", title: "Errore", description: "Slot professore non trovati." });
+            return;
+         }
 
         const slotIndex = professorSlots.findIndex(s => s && s.id === slotToBook.id && s.duration === 60);
-        if (slotIndex === -1) { /*...*/ loadSlots(); return; }
+        if (slotIndex === -1) {
+             console.error("Slot da prenotare non trovato nella lista del professore target:", slotToBook.id);
+             toast({ variant: "destructive", title: "Errore", description: "Slot non trovato o non più valido." });
+             loadSlots();
+             return;
+        }
 
         const originalSlot = professorSlots[slotIndex];
 
         // Check availability, not booked, not past
-        let slotDateTime; try { slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`); } catch { /*...*/ return; }
+        let slotDateTime; try { slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`); } catch {
+             console.error("Errore analisi data/ora slot");
+             toast({ variant: "destructive", title: "Errore", description: "Formato data/ora slot non valido." });
+             return;
+         }
         if (!originalSlot.isAvailable || originalSlot.bookedBy || isBefore(slotDateTime, new Date())) {
              toast({ variant: "destructive", title: "Prenotazione Fallita", description: "Lo slot non è più disponibile o è nel passato." });
              loadSlots(); return;
@@ -194,17 +212,52 @@ export function StudentInterface() {
         allProfessorAvailability[slotToBook.professorEmail] = professorSlots;
         localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
 
+        // Prepare email details
+        const formattedDate = format(parseISO(slotToBook.date), 'dd/MM/yyyy', { locale: it });
+        const formattedTime = slotToBook.time;
+
+        // Send confirmation emails
+        try {
+          // Email to Student
+          await sendEmail({
+            to: currentUserEmail,
+            subject: 'Conferma Prenotazione Lezione',
+            html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p>`,
+          });
+
+          // Email to Professor
+          await sendEmail({
+            to: slotToBook.professorEmail,
+            subject: 'Nuova Prenotazione Ricevuta',
+            html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dallo studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime}.</p>`,
+          });
+        } catch (emailError) {
+           console.error("Errore invio email di conferma:", emailError);
+           // Show a warning toast, but the booking itself is successful
+           toast({
+              variant: "destructive", // Or use a "warning" variant if available
+              title: "Avviso Invio Email",
+              description: "Prenotazione completata, ma si è verificato un errore nell'invio delle email di conferma.",
+              duration: 7000 // Longer duration for warnings
+           });
+        }
+
+
         loadSlots(); // Refresh UI
 
-        toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata per il ${format(parseISO(slotToBook.date), 'dd/MM/yyyy', { locale: it })} alle ${slotToBook.time}.` });
+        toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata per il ${formattedDate} alle ${formattedTime}. Email di conferma inviate.` });
     }
   }, [currentUserEmail, assignedProfessorEmails, loadSlots, toast]);
 
   // Function to cancel a booking
-  const cancelBooking = useCallback((slotToCancel: StudentSlotView) => {
+  const cancelBooking = useCallback(async (slotToCancel: StudentSlotView) => {
        if (typeof window !== 'undefined' && currentUserEmail) {
             // 24-hour cancellation check
-            let lessonStartTime; try { lessonStartTime = parseISO(`${slotToCancel.date}T${slotToCancel.time}:00`); } catch { /*...*/ return; }
+            let lessonStartTime; try { lessonStartTime = parseISO(`${slotToCancel.date}T${slotToCancel.time}:00`); } catch {
+                console.error("Errore analisi ora inizio lezione");
+                toast({ variant: "destructive", title: "Errore", description: "Formato data/ora slot non valido." });
+                return;
+            }
             if (differenceInHours(lessonStartTime, new Date()) < 24) {
                  toast({ variant: "destructive", title: "Cancellazione Fallita", description: "Impossibile cancellare meno di 24 ore prima.", duration: 5000 });
                  return;
@@ -212,18 +265,35 @@ export function StudentInterface() {
 
             const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
             let allProfessorAvailability: Record<string, BookableSlot[]> = {};
-            try { allProfessorAvailability = storedAvailability ? JSON.parse(storedAvailability) : {}; } catch (e) { /*...*/ return; }
+            try { allProfessorAvailability = storedAvailability ? JSON.parse(storedAvailability) : {}; } catch (e) {
+                 console.error("Errore analisi disponibilità:", e);
+                 toast({ variant: "destructive", title: "Errore", description: "Impossibile caricare i dati di disponibilità." });
+                 return;
+            }
 
             const professorSlots = allProfessorAvailability[slotToCancel.professorEmail];
-            if (!professorSlots) { /*...*/ return; }
+            if (!professorSlots) {
+                console.error("Slot professore target non trovati per cancellazione:", slotToCancel.professorEmail);
+                toast({ variant: "destructive", title: "Errore", description: "Slot professore non trovati." });
+                return;
+            }
 
             const slotIndex = professorSlots.findIndex(s => s && s.id === slotToCancel.id && s.duration === 60);
-            if (slotIndex === -1) { /*...*/ loadSlots(); return; }
+            if (slotIndex === -1) {
+                 console.error("Slot da cancellare non trovato nella lista del professore target:", slotToCancel.id);
+                 toast({ variant: "destructive", title: "Errore", description: "Slot non trovato o già cancellato." });
+                 loadSlots();
+                 return;
+            }
 
             const originalSlot = professorSlots[slotIndex];
 
             // Verify user booked this
-            if (originalSlot.bookedBy !== currentUserEmail) { /*...*/ loadSlots(); return; }
+            if (originalSlot.bookedBy !== currentUserEmail) {
+                 console.warn("Tentativo di cancellare una prenotazione non effettuata dall'utente corrente.");
+                 toast({ variant: "destructive", title: "Errore", description: "Non puoi cancellare questa prenotazione." });
+                 loadSlots(); return;
+             }
 
             // Update slot
             originalSlot.bookedBy = null;
@@ -234,9 +304,39 @@ export function StudentInterface() {
             allProfessorAvailability[slotToCancel.professorEmail] = professorSlots;
             localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
 
+             // Prepare email details
+             const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
+             const formattedTime = slotToCancel.time;
+
+             // Send cancellation emails
+             try {
+               // Email to Student
+               await sendEmail({
+                 to: currentUserEmail,
+                 subject: 'Conferma Cancellazione Lezione',
+                 html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>`,
+               });
+
+               // Email to Professor
+               await sendEmail({
+                 to: slotToCancel.professorEmail,
+                 subject: 'Prenotazione Cancellata',
+                 html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione dello studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>`,
+               });
+             } catch (emailError) {
+               console.error("Errore invio email di cancellazione:", emailError);
+                toast({
+                   variant: "destructive", // Or use a "warning" variant
+                   title: "Avviso Invio Email",
+                   description: "Cancellazione completata, ma si è verificato un errore nell'invio delle email di notifica.",
+                   duration: 7000
+                });
+             }
+
+
             loadSlots(); // Refresh UI
 
-            toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} il ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it })} alle ${slotToCancel.time} è stata cancellata.` });
+            toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} il ${formattedDate} alle ${formattedTime} è stata cancellata.` });
        }
    }, [currentUserEmail, loadSlots, toast]);
 
@@ -330,3 +430,4 @@ export function StudentInterface() {
     </div>
   );
 }
+
