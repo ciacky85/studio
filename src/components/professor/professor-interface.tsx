@@ -636,9 +636,11 @@ export function ProfessorInterface() {
                                     <TableBody>
                                       {dailySlots.map((slot) => {
                                         const isBooked = !!slot.bookedBy;
+                                        const isPastSlot = selectedDate ? isBefore(selectedDate, startOfDay(new Date())) : false; // Check if the slot's date is past
+                                        const isPast = isPastSlot && !isBooked; // Consider it past only if not booked
                                         const statusText = isBooked ? 'Prenotato' : (slot.isAvailable ? 'Disponibile per Prenotazione' : 'Non Disponibile');
                                         const statusColor = isBooked ? 'text-gray-500' : (slot.isAvailable ? 'text-green-600' : 'text-red-600');
-                                        const isPast = selectedDate ? isBefore(selectedDate, startOfDay(new Date())) : false;
+
 
                                         return (
                                           <TableRow key={slot.id}>
@@ -695,6 +697,8 @@ export function ProfessorInterface() {
                                        <TableBody>
                                            {professorBookedSlots.map((slot) => {
                                                if (!slot || !slot.id) return null; // Basic check
+                                                let lessonDateTime; try { lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`); } catch { return <TableRow key={`booked-prof-${slot.id}`}><TableCell colSpan={6}>Dati slot non validi</TableCell></TableRow>; }
+                                                const isPastLesson = isBefore(lessonDateTime, new Date());
                                                return (
                                                    <TableRow key={`booked-prof-${slot.id}`}>
                                                        <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
@@ -703,7 +707,11 @@ export function ProfessorInterface() {
                                                        <TableCell>{slot.bookedBy}</TableCell>
                                                        <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm', { locale: it }) : 'N/A'}</TableCell>
                                                        <TableCell className="text-center">
+                                                        {isPastLesson ? (
+                                                             <span className="text-muted-foreground italic">Lezione passata</span>
+                                                        ) : (
                                                            <Button onClick={() => cancelOwnBooking(slot.id)} variant="destructive" size="sm">Cancella Prenotazione</Button>
+                                                        )}
                                                        </TableCell>
                                                    </TableRow>
                                                );
@@ -771,7 +779,8 @@ export function ProfessorInterface() {
                                      <TableBody>
                                        {myBookedLessons.map((slot) => {
                                          let lessonDateTime; try { lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`); } catch { return <TableRow key={`my-booked-${slot.id}`}><TableCell colSpan={5}>Dati slot non validi</TableCell></TableRow>; }
-                                         const canCancel = differenceInHours(lessonDateTime, new Date()) >= 24;
+                                         const isPastLesson = isBefore(lessonDateTime, new Date());
+                                         const canCancel = !isPastLesson && differenceInHours(lessonDateTime, new Date()) >= 24;
                                          return (
                                            <TableRow key={`my-booked-${slot.id}`}>
                                              <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
@@ -779,7 +788,11 @@ export function ProfessorInterface() {
                                              <TableCell>{slot.professorEmail}</TableCell>
                                              <TableCell className="text-center">{slot.duration} min</TableCell>
                                              <TableCell className="text-center">
+                                              {isPastLesson ? (
+                                                  <span className="text-muted-foreground italic">Lezione passata</span>
+                                              ) : (
                                                <Button onClick={() => cancelLessonWithProfessor(slot)} variant="destructive" size="sm" disabled={!canCancel} title={!canCancel ? "Impossibile cancellare meno di 24 ore prima" : "Cancella questa prenotazione"}>Cancella Prenotazione</Button>
+                                              )}
                                              </TableCell>
                                            </TableRow>
                                          );
@@ -796,3 +809,4 @@ export function ProfessorInterface() {
     </div>
   );
 }
+

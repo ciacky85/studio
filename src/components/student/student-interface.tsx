@@ -471,7 +471,8 @@ export function StudentInterface() {
                  <TableBody>
                    {bookedSlots.map((slot) => {
                     let lessonDateTime; try { lessonDateTime = parseISO(`${slot.date}T${slot.time}:00`); } catch { return <TableRow key={`booked-${slot.id}`}><TableCell colSpan={5}>Dati slot non validi</TableCell></TableRow>; }
-                    const canCancel = differenceInHours(lessonDateTime, new Date()) >= 24;
+                    const isPastLesson = isBefore(lessonDateTime, new Date());
+                    const canCancel = !isPastLesson && differenceInHours(lessonDateTime, new Date()) >= 24;
                     return (
                        <TableRow key={`booked-${slot.id}`}>
                          <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
@@ -479,7 +480,19 @@ export function StudentInterface() {
                          <TableCell>{slot.professorEmail}</TableCell>
                          <TableCell className="text-center">{slot.duration} min</TableCell>
                          <TableCell className="text-center">
-                           <Button onClick={() => cancelBooking(slot)} variant="destructive" size="sm" disabled={!canCancel} title={!canCancel ? "Impossibile cancellare meno di 24 ore prima" : "Cancella questa prenotazione"}>Cancella Prenotazione</Button>
+                           {isPastLesson ? (
+                                <span className="text-muted-foreground italic">Lezione passata</span>
+                           ) : (
+                               <Button
+                                   onClick={() => cancelBooking(slot)}
+                                   variant="destructive"
+                                   size="sm"
+                                   disabled={!canCancel}
+                                   title={!canCancel ? "Impossibile cancellare meno di 24 ore prima" : "Cancella questa prenotazione"}
+                               >
+                                   Cancella Prenotazione
+                               </Button>
+                           )}
                          </TableCell>
                        </TableRow>
                      );
