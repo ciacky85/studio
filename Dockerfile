@@ -1,47 +1,43 @@
-# Stage 1: Build the Next.js application
-FROM node:20.9.0-alpine AS builder
+# Use an official Node.js runtime as a parent image
+# Use a specific Node.js version compatible with the project
+FROM node:20.9.0-alpine AS base
 
-# Set the working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy package.json AND package-lock.json
+# Stage 1: Install dependencies
+FROM base AS deps
+# Copy package.json first
 COPY package.json ./
-# Make sure package-lock.json is copied BEFORE running npm ci
-COPY package-lock.json ./
+# Install dependencies using npm install (will generate package-lock.json if missing)
+RUN npm install
 
-# Install dependencies using npm ci for faster, more reliable builds based on lock file
-# This requires package-lock.json to be present
-RUN npm ci
-
+# Stage 2: Build the Next.js application
+FROM base AS builder
+# Set the working directory
+WORKDIR /app
+# Copy dependencies from the previous stage
+COPY --from=deps /app/node_modules ./node_modules
 # Copy the rest of the application code
 COPY . .
-
-# Set environment variables (optional, can be overridden at runtime)
-# ENV NODE_ENV=production
-# ENV EMAIL_USER=your_email@example.com
-# ENV EMAIL_PASS=your_password
-
 # Build the Next.js application
 RUN npm run build
 
-# Stage 2: Create the production image
-FROM node:20.9.0-alpine
-
+# Stage 3: Production image
+FROM base AS runner
+# Set the working directory
 WORKDIR /app
 
-# Set NODE_ENV to production
-ENV NODE_ENV production
+# Set environment variables
+ENV NODE_ENV=production
+# Optionally, expose the port Next.js runs on (default is 3000)
+# EXPOSE 3000 (handled by docker-compose or docker run)
 
-# Copy built assets from the builder stage
-# Copy the standalone Next.js output
+# Copy the built Next.js app from the builder stage
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
-# Copy the static assets (if any)
 COPY --from=builder /app/.next/static ./.next/static
-# Copy the public directory (if it exists and is needed)
-# COPY --from=builder /app/public ./public
 
-# Expose the port the app runs on (default 3000 for production start)
-EXPOSE 3000
-
-# Command to run the application
+# The command to run the application
+# Use the hostname '0.0.0.0' to accept connections from any IP address
 CMD ["node", "server.js"]
