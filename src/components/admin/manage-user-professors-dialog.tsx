@@ -15,33 +15,50 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-interface ManageStudentProfessorsDialogProps {
-    isOpen: boolean;
-    onClose: () => void;
-    student: { email: string; assignedProfessorEmails?: string[] | null }; // Simplified student prop
-    allProfessors: string[];
-    onSave: (studentEmail: string, assignedEmails: string[]) => void;
+// Interface for the user passed to the dialog
+interface UserForAssignment {
+    email: string;
+    role: 'student' | 'professor'; // Include role for context if needed
+    assignedProfessorEmails?: string[] | null;
 }
 
-export function ManageStudentProfessorsDialog({
+interface ManageUserProfessorsDialogProps {
+    isOpen: boolean;
+    onClose: () => void;
+    user: UserForAssignment | null; // Accept a user object (student or professor)
+    allProfessors: string[];
+    onSave: (userEmail: string, assignedEmails: string[]) => void;
+}
+
+export function ManageUserProfessorsDialog({
     isOpen,
     onClose,
-    student,
+    user,
     allProfessors,
     onSave,
-}: ManageStudentProfessorsDialogProps) {
+}: ManageUserProfessorsDialogProps) {
     const [selectedProfessors, setSelectedProfessors] = useState<string[]>([]);
 
-    // Initialize selected professors based on the student's current assignments when the dialog opens
+    // Initialize selected professors based on the user's current assignments when the dialog opens or user changes
     useEffect(() => {
-        if (student && Array.isArray(student.assignedProfessorEmails)) {
-            setSelectedProfessors(student.assignedProfessorEmails);
+        if (user && Array.isArray(user.assignedProfessorEmails)) {
+            // Filter out the user's own email if they are a professor
+             setSelectedProfessors(
+                 user.role === 'professor'
+                     ? user.assignedProfessorEmails.filter(email => email !== user.email)
+                     : user.assignedProfessorEmails
+             );
         } else {
             setSelectedProfessors([]); // Reset if no assignments or invalid data
         }
-    }, [student, isOpen]); // Re-run when the student or isOpen changes
+    }, [user, isOpen]); // Re-run when the user or isOpen changes
 
     const handleCheckboxChange = (professorEmail: string, checked: boolean) => {
+        // Prevent professor from assigning themselves
+        if (user?.role === 'professor' && professorEmail === user.email) {
+             return;
+        }
+
         setSelectedProfessors(prev => {
             if (checked) {
                 // Add professor if not already selected
@@ -54,31 +71,39 @@ export function ManageStudentProfessorsDialog({
     };
 
     const handleSaveChanges = () => {
-        if (student) {
-            onSave(student.email, selectedProfessors);
+        if (user) {
+            onSave(user.email, selectedProfessors);
         }
     };
 
-    if (!student) return null; // Don't render if no student is selected
+    // Filter out the current user if they are a professor from the list of assignable professors
+    const assignableProfessors = user?.role === 'professor'
+        ? allProfessors.filter(profEmail => profEmail !== user.email)
+        : allProfessors;
+
+
+    if (!user) return null; // Don't render if no user is selected
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>Gestisci Professori per {student.email}</DialogTitle>
+                    <DialogTitle>Gestisci Professori per {user.email}</DialogTitle>
                     <DialogDescription>
-                        Seleziona i professori a cui questo studente può prenotare lezioni.
+                        Seleziona i professori da cui questo {user.role === 'student' ? 'studente' : 'professore'} può prenotare lezioni.
                     </DialogDescription>
                 </DialogHeader>
                 <ScrollArea className="h-72 w-full rounded-md border p-4">
                     <div className="grid gap-4 py-4">
-                        {allProfessors.length > 0 ? (
-                            allProfessors.map((profEmail) => (
+                        {assignableProfessors.length > 0 ? (
+                            assignableProfessors.map((profEmail) => (
                                 <div key={profEmail} className="flex items-center space-x-2">
                                     <Checkbox
                                         id={`prof-${profEmail}`}
                                         checked={selectedProfessors.includes(profEmail)}
                                         onCheckedChange={(checked) => handleCheckboxChange(profEmail, !!checked)}
+                                        // Disable checkbox if it's the user's own email (shouldn't happen with filtering, but safe)
+                                        disabled={user?.role === 'professor' && profEmail === user.email}
                                     />
                                     <Label
                                         htmlFor={`prof-${profEmail}`}
@@ -89,7 +114,7 @@ export function ManageStudentProfessorsDialog({
                                 </div>
                             ))
                         ) : (
-                            <p className="text-sm text-muted-foreground">Nessun professore disponibile.</p>
+                            <p className="text-sm text-muted-foreground">Nessun altro professore disponibile per l'assegnazione.</p>
                         )}
                     </div>
                 </ScrollArea>

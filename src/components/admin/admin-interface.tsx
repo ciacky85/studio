@@ -17,15 +17,16 @@ import {useToast} from "@/hooks/use-toast";
 import type { UserData } from '@/types/user'; // Assuming UserData type is defined
 import { Separator } from '@/components/ui/separator'; // Import Separator
 import { format, parseISO } from 'date-fns'; // Import date-fns functions
-import {ManageStudentProfessorsDialog} from './manage-student-professors-dialog'; // Import the new dialog
+// Import the RENAMED generic dialog
+import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
 
-// Define the structure for user display, including assigned professors for students
+// Update DisplayUser interface slightly for clarity if needed (role already exists)
 interface DisplayUser {
   id: number;
   name: string;
-  role: string;
+  role: 'student' | 'professor' | 'admin'; // Explicitly include professor and admin
   email: string;
-  assignedProfessorEmails?: string[] | null; // Changed field name and type
+  assignedProfessorEmails?: string[] | null; // Keep using this field name
 }
 
 // Define the structure of a bookable slot (from professor/student perspective)
@@ -36,9 +37,9 @@ interface BookableSlot {
     time: string; // 'HH:MM'
     duration: number; // e.g., 60
     isAvailable: boolean;
-    bookedBy: string | null; // Student email
+    bookedBy: string | null; // Student or Professor email
     bookingTime: string | null; // ISO string timestamp
-    professorEmail: string;
+    professorEmail: string; // The email of the professor offering the slot
 }
 
 // Key for storing all professors' availability (date-specific slots) in localStorage
@@ -54,7 +55,8 @@ export function AdminInterface() {
   const [schedule, setSchedule] = useState<Record<string, string>>({}); // Key: "Day-Time", Value: Professor Email or ""
   const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]); // State for all booked slots
   const [isManageProfessorsDialogOpen, setIsManageProfessorsDialogOpen] = useState(false);
-  const [selectedStudentForProfessorManagement, setSelectedStudentForProfessorManagement] = useState<DisplayUser | null>(null);
+  // State to hold the user (student OR professor) selected for professor assignment
+  const [selectedUserForProfessorManagement, setSelectedUserForProfessorManagement] = useState<DisplayUser | null>(null);
 
 
   const {toast} = useToast();
@@ -95,19 +97,24 @@ export function AdminInterface() {
               const userData: UserData & { password?: string } = JSON.parse(item);
 
               // Check if it looks like a user registration entry
-              if (userData.role && typeof userData.approved === 'boolean') { // Check if role and approved status exist
+              // Check includes 'admin' role now, although admins won't be assignable
+              if (userData.role && ['student', 'professor', 'admin'].includes(userData.role) && typeof userData.approved === 'boolean') {
                  const name = key.split('@')[0]; // Simple name extraction from email
                  const userDisplayData: DisplayUser = {
                    id: idCounter++,
                    name: name,
-                   role: userData.role,
+                   role: userData.role, // Use the role from storage
                    email: key,
                    // Ensure assignedProfessorEmails is handled as an array or null
                    assignedProfessorEmails: Array.isArray(userData.assignedProfessorEmail) ? userData.assignedProfessorEmail : null,
                  };
 
                  if (userData.approved === true) {
-                   loadedApproved.push(userDisplayData);
+                   // Only add non-admin users to the approved list shown in the table
+                    if(userData.role !== 'admin') {
+                        loadedApproved.push(userDisplayData);
+                    }
+                   // Add professors to the list used for scheduling and assignment dialog
                    if (userData.role === 'professor') {
                      loadedProfessors.push(key); // Add approved professors to the list
                    }
@@ -204,10 +211,9 @@ export function AdminInterface() {
         try {
           let userData: UserData = JSON.parse(userDataString);
           userData.approved = true; // Mark as approved
-          // Initialize assignedProfessorEmails as null or empty array for students upon approval
-          if(userData.role === 'student') {
-             userData.assignedProfessorEmail = userData.assignedProfessorEmail || null; // Keep existing if somehow set, else null
-          }
+          // Initialize assignedProfessorEmails as null or empty array for students AND professors upon approval
+          userData.assignedProfessorEmail = userData.assignedProfessorEmail || null; // Keep existing if somehow set, else null
+
           localStorage.setItem(email, JSON.stringify(userData)); // Update in localStorage
 
           // Find the user in pending list to move them
@@ -220,16 +226,15 @@ export function AdminInterface() {
             html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
           });
 
-          // Update states: remove from pending, add to approved
+          // Update states: remove from pending, add to approved (if not admin)
           setPendingRegistrations(prev => prev.filter((reg) => reg.email !== email));
-          if (userToApprove) {
-             // Add the user to approved list, ensuring assignedProfessorEmails is handled correctly
+          if (userToApprove && userToApprove.role !== 'admin') { // Only add non-admins to UI list
              const approvedUserData: DisplayUser = {
                 ...userToApprove,
                 assignedProfessorEmails: userData.assignedProfessorEmail // Pass the potentially updated array/null value
              };
             setApprovedUsers(prev => [...prev, approvedUserData]);
-            // If the approved user is a professor, update the professor list used for scheduling
+            // If the approved user is a professor, update the professor list used for scheduling AND assignment
             if (userToApprove.role === 'professor') {
               setProfessors(prev => [...prev, email].sort()); // Add and sort
             }
@@ -312,33 +317,33 @@ export function AdminInterface() {
   };
 
 
-  // Function called when saving assigned professors from the dialog
-  const handleSaveStudentProfessors = (studentEmail: string, assignedEmails: string[]) => {
+  // Updated function to handle saving assigned professors for ANY user (student or professor)
+  const handleSaveUserProfessors = (userEmail: string, assignedEmails: string[]) => {
     if (typeof window !== 'undefined') {
-        const studentDataString = localStorage.getItem(studentEmail);
-        if (studentDataString) {
+        const userDataString = localStorage.getItem(userEmail);
+        if (userDataString) {
             try {
-                let studentData: UserData = JSON.parse(studentDataString);
-                studentData.assignedProfessorEmail = assignedEmails.length > 0 ? assignedEmails : null; // Store array or null if empty
-                localStorage.setItem(studentEmail, JSON.stringify(studentData));
+                let userData: UserData = JSON.parse(userDataString);
+                userData.assignedProfessorEmail = assignedEmails.length > 0 ? assignedEmails : null; // Store array or null if empty
+                localStorage.setItem(userEmail, JSON.stringify(userData));
 
                 // Update the state to reflect the change in the UI
                 setApprovedUsers(prevUsers =>
                     prevUsers.map(user =>
-                        user.email === studentEmail
-                            ? { ...user, assignedProfessorEmails: studentData.assignedProfessorEmail }
+                        user.email === userEmail
+                            ? { ...user, assignedProfessorEmails: userData.assignedProfessorEmail }
                             : user
                     )
                 );
 
                 toast({
                     title: "Professori Aggiornati",
-                    description: `Le assegnazioni dei professori per ${studentEmail} sono state aggiornate.`,
+                    description: `Le assegnazioni dei professori per ${userEmail} sono state aggiornate.`,
                 });
                 setIsManageProfessorsDialogOpen(false); // Close the dialog
-                setSelectedStudentForProfessorManagement(null); // Deselect student
+                setSelectedUserForProfessorManagement(null); // Deselect user
             } catch (error) {
-                console.error("Errore durante l'aggiornamento dei professori assegnati:", studentEmail, assignedEmails, error);
+                console.error("Errore durante l'aggiornamento dei professori assegnati:", userEmail, assignedEmails, error);
                 toast({
                     variant: "destructive",
                     title: "Errore Aggiornamento",
@@ -346,13 +351,14 @@ export function AdminInterface() {
                 });
             }
         } else {
-            toast({ variant: "destructive", title: "Errore", description: "Dati studente non trovati." });
+            toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
         }
     }
 };
 
-const openManageProfessorsDialog = (student: DisplayUser) => {
-    setSelectedStudentForProfessorManagement(student);
+// Updated function to open the dialog for ANY user (student or professor)
+const openManageProfessorsDialog = (user: DisplayUser) => {
+    setSelectedUserForProfessorManagement(user);
     setIsManageProfessorsDialogOpen(true);
 };
 
@@ -471,7 +477,7 @@ const openManageProfessorsDialog = (student: DisplayUser) => {
              <Card>
                 <CardHeader>
                      <CardTitle>Utenti Approvati</CardTitle>
-                     <CardDescription>Elenco di tutti gli utenti registrati e approvati. Assegna professori agli studenti.</CardDescription>
+                     <CardDescription>Elenco di tutti gli studenti e professori approvati. Assegna professori agli utenti.</CardDescription>
                  </CardHeader>
                  <CardContent>
                      <div className="overflow-x-auto">
@@ -482,37 +488,32 @@ const openManageProfessorsDialog = (student: DisplayUser) => {
                                          <TableHead>Nome</TableHead>
                                          <TableHead>Ruolo</TableHead>
                                          <TableHead>Email</TableHead>
-                                         <TableHead>Professori Assegnati</TableHead> {/* Changed column header */}
-                                         <TableHead>Azioni</TableHead> {/* New column for actions */}
+                                         <TableHead>Professori Assegnati</TableHead>
+                                         <TableHead>Azioni</TableHead>
                                      </TableRow>
                                  </TableHeader>
                                  <TableBody>
                                      {approvedUsers.map((user) => (
                                          <TableRow key={`approved-${user.id}`}>
                                              <TableCell>{user.name}</TableCell>
-                                             <TableCell>{user.role === 'professor' ? 'Professore' : 'Studente'}</TableCell>
+                                             {/* Correctly display role */}
+                                             <TableCell>{user.role.charAt(0).toUpperCase() + user.role.slice(1)}</TableCell>
                                              <TableCell>{user.email}</TableCell>
-                                             <TableCell> {/* Display assigned professors */}
-                                                 {user.role === 'student' ? (
-                                                     (user.assignedProfessorEmails && user.assignedProfessorEmails.length > 0)
-                                                         ? user.assignedProfessorEmails.join(', ')
-                                                         : 'Nessuno'
-                                                 ) : (
-                                                     'N/A' // Not applicable for professors
-                                                 )}
+                                             <TableCell>
+                                                {/* Display assigned professors for both students and professors */}
+                                                 {(user.assignedProfessorEmails && user.assignedProfessorEmails.length > 0)
+                                                     ? user.assignedProfessorEmails.join(', ')
+                                                     : 'Nessuno'}
                                              </TableCell>
-                                             <TableCell> {/* Action Button Cell */}
-                                                {user.role === 'student' ? (
-                                                    <Button
-                                                        onClick={() => openManageProfessorsDialog(user)}
-                                                        size="sm"
-                                                        variant="outline"
-                                                    >
-                                                        Gestisci Professori
-                                                    </Button>
-                                                ) : (
-                                                    ' ' // Empty cell for non-students
-                                                )}
+                                             <TableCell>
+                                                {/* Action Button Cell - Enable for both students and professors */}
+                                                <Button
+                                                    onClick={() => openManageProfessorsDialog(user)}
+                                                    size="sm"
+                                                    variant="outline"
+                                                >
+                                                    Gestisci Professori
+                                                </Button>
                                             </TableCell>
                                          </TableRow>
                                      ))}
@@ -541,7 +542,7 @@ const openManageProfessorsDialog = (student: DisplayUser) => {
                                              <TableHead>Data</TableHead>
                                              <TableHead>Ora</TableHead>
                                              <TableHead>Professore</TableHead>
-                                             <TableHead>Studente</TableHead>
+                                             <TableHead>Studente/Professore</TableHead> {/* Updated Header */}
                                              <TableHead>Ora Prenotazione</TableHead>
                                          </TableRow>
                                      </TableHeader>
@@ -551,7 +552,7 @@ const openManageProfessorsDialog = (student: DisplayUser) => {
                                                  <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy')}</TableCell>
                                                  <TableCell>{slot.time}</TableCell>
                                                  <TableCell>{slot.professorEmail}</TableCell>
-                                                 <TableCell>{slot.bookedBy}</TableCell>
+                                                 <TableCell>{slot.bookedBy}</TableCell> {/* Show booker email */}
                                                  <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm') : 'N/A'}</TableCell>
                                              </TableRow>
                                          ))}
@@ -568,17 +569,17 @@ const openManageProfessorsDialog = (student: DisplayUser) => {
         </CardContent>
       </Card>
     </div>
-    {/* Dialog for Managing Student Professors */}
-    {selectedStudentForProfessorManagement && (
-        <ManageStudentProfessorsDialog
+    {/* Dialog for Managing User Professors */}
+    {selectedUserForProfessorManagement && (
+        <ManageUserProfessorsDialog
             isOpen={isManageProfessorsDialogOpen}
             onClose={() => {
                 setIsManageProfessorsDialogOpen(false);
-                setSelectedStudentForProfessorManagement(null);
+                setSelectedUserForProfessorManagement(null);
             }}
-            student={selectedStudentForProfessorManagement}
-            allProfessors={professors}
-            onSave={handleSaveStudentProfessors}
+            user={selectedUserForProfessorManagement}
+            allProfessors={professors} // Pass the list of all approved professors
+            onSave={handleSaveUserProfessors} // Use the updated save handler
         />
     )}
     </>
