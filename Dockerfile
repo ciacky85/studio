@@ -1,59 +1,75 @@
-# Base image using Node.js 20
-FROM node:20.9.0-alpine AS base
+FROM node:20-alpine AS base
 
-# Set up user and group
-RUN addgroup --system --gid 1001 nextjs
-RUN adduser --system --uid 1001 nextjs
-USER nextjs
+# Set working directory
+WORKDIR /app
 
-# Builder stage
+# Install dependencies for base image, including sharp
+# Sharp needs some native dependencies, so install them here
+RUN apk add --no-cache --virtual .gyp python3 make g++ && \
+    npm install -g npm@latest && \
+    apk del .gyp python3 make g++
+
+# Set environment variables
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
+
+# https://nextjs.org/docs/app/building-your-application/deploying/docker#configure-the-dockerfile
+# Disable turbopack for Docker builds
+ENV NEXT_DISABLE_TURBOPACK=1
+
+# Base Dependencies
+FROM base AS base-deps
+
+# Copy existing application files
+COPY . .
+
+# Next.js collects completely anonymous telemetry data about general usage.
+# Learn more here: https://nextjs.org/telemetry
+# Uncomment the following line to disable telemetry during the build process.
+ENV NEXT_TELEMETRY_DISABLED 1
+
+RUN npm ci --omit=dev || npm install --omit=dev
+
+# Create a separate layer for the production dependencies
 FROM base AS builder
 
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY --chown=nextjs:nextjs package.json package-lock.json ./
+# Copy app files
+COPY . .
 
-# Install dependencies using npm install (generates lock file if missing)
-RUN npm install
+# Copy next.config.js if it exists
 
-# Copy the rest of the application code
-COPY --chown=nextjs:nextjs . .
-
-# Set NEXT_TELEMETRY_DISABLED to 1 to disable telemetry during build
-ENV NEXT_TELEMETRY_DISABLED 1
+# Copy existing node_modules directory to cache node_modules (optional)
+# This ensures that node_modules are cached correctly even if you haven't
+# copied package-lock.json (or package.json)
+COPY --from=base-deps /app/node_modules ./node_modules
 
 # Build the Next.js application
 RUN npm run build
 
-# Runner stage
+# Production Image
 FROM base AS runner
+
 WORKDIR /app
 
-ENV NODE_ENV=production
-# Uncomment the following line in case you want to disable telemetry during runtime.
-# ENV NEXT_TELEMETRY_DISABLED 1
+# You can set these values in your .env file
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
 
-# Copy necessary files from the builder stage for standalone output
-COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
+# Install only the dependencies needed to run in production, in server mode
+# Next.js needs sharp so install it now.  npm ci removes anything not in package-lock
+COPY --from=builder /app/package.json ./
+#Attempt to install with npm ci, if package-lock.json exists.  Otherwise, install normally.
+RUN  npm ci --omit=dev || npm install --omit=dev
 
-# Standalone mode includes the public folder in the output directory if it exists.
-# Copy the public folder if it exists in the standalone output.
-# Check if /app/.next/standalone/public exists before copying
-# This requires running a shell command, or simply trying the copy and ignoring failure if not critical.
-# A simpler approach for now is to assume it's there if needed, or remove if not used.
-# If your app uses a public folder, ensure it's correctly handled by standalone output.
-# COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone/public ./public
+# Copy built application
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.js ./
 
-# Set the correct user and group
-USER nextjs
-
+# Expose port
 EXPOSE 3000
 
-ENV PORT 3000
-# Set hostname to allow connections from outside the container
-ENV HOSTNAME "0.0.0.0"
-
-# server.js is created by next build in the standalone output directory
-CMD ["node", "server.js"]
+# Start the server
+CMD ["npm", "start"]
