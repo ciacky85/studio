@@ -51,6 +51,7 @@ const TableFooter = React.forwardRef<
 ))
 TableFooter.displayName = "TableFooter"
 
+// Ensure no whitespace inside this tag or before/after it in usage
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
@@ -62,8 +63,8 @@ const TableRow = React.forwardRef<
       className
     )}
     {...props}
-  /> // Ensure no whitespace inside this tag or before/after it in usage
-))
+  />
+));
 TableRow.displayName = "TableRow"
 
 const TableHead = React.forwardRef<

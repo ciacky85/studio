@@ -206,7 +206,7 @@ export function ProfessorInterface() {
   }, [loadAndGenerateSlots]);
 
    // Save function (centralized) - ensures data for other dates/professors isn't lost
-   const saveProfessorAvailability = useCallback((updatedSlots?: BookableSlot[]) => {
+   const saveProfessorAvailability = useCallback((updatedSlots: BookableSlot[]) => {
         if (typeof window !== 'undefined' && currentUserEmail) {
             // 1. Load the entire availability object
             const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
@@ -225,46 +225,41 @@ export function ProfessorInterface() {
                 }
             }
 
-            // 2. If specific updated slots are provided (e.g., from daily view toggle or cancellation),
-            //    merge them into the existing professor slots. Otherwise, assume the caller
-            //    has already modified the full list (less common now).
-            if (updatedSlots) {
-                let currentProfessorSlots = allProfessorAvailability[currentUserEmail] || [];
-                const updatedSlotMap = new Map(updatedSlots.map(slot => [slot.id, slot]));
+             // 2. Get the current full list of slots for this professor
+             let currentProfessorSlots = allProfessorAvailability[currentUserEmail] || [];
 
-                // Create a new list by replacing or adding updated slots
-                 const newProfessorSlots: BookableSlot[] = [];
-                 const processedIds = new Set<string>();
+             // 3. Create a map of the updated slots for efficient lookup
+             const updatedSlotMap = new Map(updatedSlots.map(slot => [slot.id, slot]));
 
-                 // Add all updated slots first
-                 updatedSlots.forEach(slot => {
-                     if (slot && slot.id) { // Ensure slot and id exist
-                         newProfessorSlots.push(slot);
-                         processedIds.add(slot.id);
-                     } else {
-                         console.warn("Tentativo di salvare uno slot non valido o senza ID:", slot);
-                     }
-                 });
+             // 4. Merge the updates into the current slots list
+             const newProfessorSlots: BookableSlot[] = [];
+             const processedIds = new Set<string>();
 
-                 // Add existing slots that were NOT updated
-                 currentProfessorSlots.forEach(slot => {
-                    if (slot && slot.id && !processedIds.has(slot.id)) {
-                        newProfessorSlots.push(slot);
-                    }
-                 });
+             // Add all updated slots first
+             updatedSlots.forEach(slot => {
+                 if (slot && slot.id) { // Ensure slot and id exist
+                     newProfessorSlots.push(slot);
+                     processedIds.add(slot.id);
+                 } else {
+                     console.warn("Tentativo di salvare uno slot non valido o senza ID:", slot);
+                 }
+             });
 
-                 // Filter out any potential null/undefined slots and ensure duration is 60
-                 const validatedSlots = newProfessorSlots.filter(slot => slot && slot.date && slot.time && slot.duration === 60);
+             // Add existing slots that were NOT updated
+             currentProfessorSlots.forEach(slot => {
+                if (slot && slot.id && !processedIds.has(slot.id)) {
+                    newProfessorSlots.push(slot);
+                }
+             });
 
-                 // Sort the combined list
-                 allProfessorAvailability[currentUserEmail] = sortSlots(validatedSlots);
+             // Filter out any potential null/undefined slots and ensure duration is 60
+             const validatedSlots = newProfessorSlots.filter(slot => slot && slot.date && slot.time && slot.duration === 60);
 
-            }
-            // If no updatedSlots provided, we just save the current state of allProfessorAvailability
-            // This path might be less used now as updates should provide the modified slots.
+             // 5. Sort the merged list
+             allProfessorAvailability[currentUserEmail] = sortSlots(validatedSlots);
 
-            // 3. Save the entire modified availability object back to localStorage
-            localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
+             // 6. Save the entire modified availability object back to localStorage
+             localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
         }
    }, [currentUserEmail]);
 
@@ -357,7 +352,6 @@ export function ProfessorInterface() {
             isAvailable: true, // Set to true to make it available again
         };
 
-
         // 5. Save updated data back to localStorage using the CENTRALIZED save function
         // Pass the single updated slot to the centralized function for merging
         saveProfessorAvailability([updatedSlot]);
@@ -432,7 +426,7 @@ export function ProfessorInterface() {
                              <TableCell>{slot.time}</TableCell>
                              <TableCell className="text-center">{slot.duration} min</TableCell>
                              <TableCell className={`${statusColor} font-medium`}>{statusText}</TableCell>
-                             <TableCell className="text-center"> {/* Removed space-x-2 */}
+                             <TableCell className="text-center">
                               {isBooked ? (
                                   <Button
                                       variant="ghost" // Display as plain text / ghost button
