@@ -88,9 +88,11 @@ export function StudentInterface() {
      let allProfessorAvailability: Record<string, any[]> = {}; // { professorEmail: [slot1, slot2, ...] }
      if (storedAvailability) {
          try {
-             allProfessorAvailability = JSON.parse(storedAvailability);
-              if (typeof allProfessorAvailability !== 'object' || allProfessorAvailability === null) {
-                  allProfessorAvailability = {}; // Reset if invalid
+             const parsedAvailability = JSON.parse(storedAvailability);
+              if (typeof parsedAvailability === 'object' && parsedAvailability !== null) {
+                  allProfessorAvailability = parsedAvailability; // Reset if invalid
+              } else {
+                 allProfessorAvailability = {};
               }
          } catch (e) {
              console.error("Failed to parse allProfessorAvailability", e);
@@ -164,9 +166,11 @@ export function StudentInterface() {
         const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
         let allProfessorAvailability: Record<string, any[]> = {};
         try {
-            allProfessorAvailability = storedAvailability ? JSON.parse(storedAvailability) : {};
-            if (typeof allProfessorAvailability !== 'object' || allProfessorAvailability === null) {
-                 allProfessorAvailability = {};
+            const parsedAvailability = storedAvailability ? JSON.parse(storedAvailability) : {};
+            if (typeof parsedAvailability === 'object' && parsedAvailability !== null) {
+                 allProfessorAvailability = parsedAvailability;
+            } else {
+                allProfessorAvailability = {};
             }
         } catch (e) {
             console.error("Failed to parse allProfessorAvailability before booking", e);
@@ -221,7 +225,7 @@ export function StudentInterface() {
         // 5. Update UI state immediately by reloading slots
         loadSlots(); // Reload all slots to reflect the change
 
-        toast({ title: "Booking Successful", description: `Lesson with ${slotToBook.professorEmail} booked for ${format(parseISO(slotToBook.date), 'PPP')} at ${slotToBook.time}.` });
+        toast({ title: "Booking Successful", description: `Lesson with ${slotToBook.professorEmail} booked for ${format(parseISO(slotToBook.date), 'dd/MM/yyyy')} at ${slotToBook.time}.` });
 
         // Potential Email Confirmation (implement sendEmail service if needed)
         // try {
@@ -243,9 +247,11 @@ export function StudentInterface() {
             const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
             let allProfessorAvailability: Record<string, any[]> = {};
             try {
-                 allProfessorAvailability = storedAvailability ? JSON.parse(storedAvailability) : {};
-                 if (typeof allProfessorAvailability !== 'object' || allProfessorAvailability === null) {
-                     allProfessorAvailability = {};
+                 const parsedAvailability = storedAvailability ? JSON.parse(storedAvailability) : {};
+                 if (typeof parsedAvailability === 'object' && parsedAvailability !== null) {
+                     allProfessorAvailability = parsedAvailability;
+                 } else {
+                    allProfessorAvailability = {};
                  }
             } catch (e) {
                  console.error("Failed to parse allProfessorAvailability before cancelling", e);
@@ -313,7 +319,7 @@ export function StudentInterface() {
            // 5. Update UI state immediately by reloading slots
            loadSlots(); // Reload all slots
 
-           toast({ title: "Booking Cancelled", description: `Your lesson with ${slotToCancel.professorEmail} on ${format(parseISO(slotToCancel.date), 'PPP')} at ${slotToCancel.time} has been cancelled.` });
+           toast({ title: "Booking Cancelled", description: `Your lesson with ${slotToCancel.professorEmail} on ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy')} at ${slotToCancel.time} has been cancelled.` });
 
             // Potential Cancellation Email Notifications
             // try {
@@ -371,7 +377,7 @@ export function StudentInterface() {
                           // Construct each TableRow individually to avoid whitespace issues
                           return (
                             <TableRow key={`available-${slot.id}`}>
-                              <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
+                              <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy')}</TableCell>
                               <TableCell>{slot.time}</TableCell>
                               <TableCell>{slot.professorEmail}</TableCell>
                               <TableCell className="text-center">{slot.duration} min</TableCell>
@@ -421,7 +427,7 @@ export function StudentInterface() {
                          // Construct each TableRow individually
                          return (
                            <TableRow key={`booked-${slot.id}`}>
-                             <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
+                             <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy')}</TableCell>
                              <TableCell>{slot.time}</TableCell>
                              <TableCell>{slot.professorEmail}</TableCell>
                              <TableCell className="text-center">{slot.duration} min</TableCell>

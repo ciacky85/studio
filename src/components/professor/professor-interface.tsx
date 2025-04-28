@@ -235,8 +235,10 @@ export function ProfessorInterface() {
 
                  // Add all updated slots first
                  updatedSlots.forEach(slot => {
-                     newProfessorSlots.push(slot);
-                     processedIds.add(slot.id);
+                     if (slot) { // Ensure slot is not null/undefined
+                         newProfessorSlots.push(slot);
+                         processedIds.add(slot.id);
+                     }
                  });
 
                  // Add existing slots that were NOT updated
@@ -296,7 +298,7 @@ export function ProfessorInterface() {
 
     toast({
         title: updatedSlot.isAvailable ? "Slot Made Available" : "Slot Made Unavailable",
-        description: `Slot at ${slotToToggle.time} on ${format(selectedDate, 'PPP')} is now ${updatedSlot.isAvailable ? 'available for booking' : 'unavailable'}.` // Updated message
+        description: `Slot at ${slotToToggle.time} on ${format(selectedDate, 'dd/MM/yyyy')} is now ${updatedSlot.isAvailable ? 'available for booking' : 'unavailable'}.` // Updated message
     })
   };
 
@@ -320,7 +322,7 @@ export function ProfessorInterface() {
          }
 
         // Find the professor's slot list
-        const professorSlots = allProfessorAvailability[currentUserEmail];
+        let professorSlots = allProfessorAvailability[currentUserEmail];
         if (!professorSlots || !Array.isArray(professorSlots)) {
             toast({ variant: "destructive", title: "Cancellation Error", description: "Your schedule data not found." });
             return;
@@ -353,16 +355,15 @@ export function ProfessorInterface() {
 
         // Replace the old slot with the updated one in the professor's list
         const updatedProfessorSlots = professorSlots.map(slot => slot.id === slotId ? updatedSlot : slot);
-        allProfessorAvailability[currentUserEmail] = updatedProfessorSlots;
-
 
         // 5. Save updated data back to localStorage using the CENTRALIZED save function
-        saveProfessorAvailability(updatedProfessorSlots); // Pass the full updated list for this professor
+        // Need to pass the single updated slot to the centralized function for merging
+        saveProfessorAvailability([updatedSlot]);
 
         // 6. Update UI state immediately by reloading slots (both daily and booked)
         loadAndGenerateSlots(); // This re-reads from the updated localStorage
 
-        toast({ title: "Booking Cancelled", description: `Booking for ${studentEmail} on ${format(parseISO(slotToCancel.date), 'PPP')} at ${slotToCancel.time} cancelled. Slot is now available.` }); // Updated toast message
+        toast({ title: "Booking Cancelled", description: `Booking for ${studentEmail} on ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy')} at ${slotToCancel.time} cancelled. Slot is now available.` }); // Updated toast message
 
         // Potential Email Notification to Student (implement sendEmail service if needed)
         // try {
@@ -397,7 +398,7 @@ export function ProfessorInterface() {
 
           <div> {/* Table for the selected date */}
             <h3 className="text-lg font-semibold mb-3">
-              Manage Slots for {selectedDate ? format(selectedDate, 'PPP') : 'No date selected'} {/* Format selected date */}
+              Manage Slots for {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : 'No date selected'} {/* Format selected date */}
             </h3>
              {dailySlots.length === 0 ? (
                  <p className="text-muted-foreground p-4 text-center">
@@ -455,7 +456,7 @@ export function ProfessorInterface() {
                              </TableCell>
                              <TableCell>
                                {slot.bookedBy
-                                 ? `By ${slot.bookedBy}${slot.bookingTime ? ` (${format(parseISO(slot.bookingTime), 'Pp')})` : ''}`
+                                 ? `By ${slot.bookedBy}${slot.bookingTime ? ` (${format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm')})` : ''}`
                                  : '—'} {/* Show dash if not booked */}
                              </TableCell>
                            </TableRow>
@@ -497,11 +498,11 @@ export function ProfessorInterface() {
                                 if (!slot || !slot.id) return null;
                                 return (
                                      <TableRow key={`booked-all-${slot.id}`}>
-                                         <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
+                                         <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy')}</TableCell>
                                          <TableCell>{slot.time}</TableCell>
                                          <TableCell className="text-center">{slot.duration} min</TableCell>
                                          <TableCell>{slot.bookedBy}</TableCell>
-                                         <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'Pp') : 'N/A'}</TableCell>
+                                         <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm') : 'N/A'}</TableCell>
                                          <TableCell className="text-center">
                                              <Button
                                                  onClick={() => cancelBooking(slot.id)}
