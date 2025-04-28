@@ -37,7 +37,8 @@ const daysOfWeek = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì',
 export function ProfessorInterface() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date()); // Default to today
   const [dailySlots, setDailySlots] = useState<BookableSlot[]>([]);
-  const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]); // State for all booked slots for this professor
+  const [professorBookedSlots, setProfessorBookedSlots] = useState<BookableSlot[]>([]); // State for booked slots for THIS professor
+  const [allBookedLessonsAcrossProfessors, setAllBookedLessonsAcrossProfessors] = useState<BookableSlot[]>([]); // State for ALL booked lessons
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const {toast} = useToast();
 
@@ -85,7 +86,8 @@ export function ProfessorInterface() {
   const loadAndGenerateSlots = useCallback(() => {
     if (typeof window === 'undefined' || !currentUserEmail) {
       setDailySlots([]); // Clear slots if no user or on server
-      setAllBookedSlots([]); // Clear booked slots as well
+      setProfessorBookedSlots([]); // Clear booked slots as well
+      setAllBookedLessonsAcrossProfessors([]); // Clear all booked lessons
       return;
     }
 
@@ -127,11 +129,24 @@ export function ProfessorInterface() {
 
     // Get the current professor's full list of slots from the loaded data
     const professorSlots = allProfessorAvailability[currentUserEmail] || [];
+    const allBookedLessons: BookableSlot[] = [];
 
-    // 3. Filter and sort all booked slots for the current professor
+    // Iterate through ALL professors' slots to find ALL booked lessons
+    Object.values(allProfessorAvailability).flat().forEach(slot => {
+      if (slot && slot.bookedBy && slot.duration === 60) {
+        allBookedLessons.push(slot);
+      }
+    });
+
+    // Sort and set ALL booked lessons across all professors
+    setAllBookedLessonsAcrossProfessors(sortSlots([...allBookedLessons]));
+
+
+    // 3. Filter and sort booked slots for the CURRENT professor
     const bookedForCurrentUser = professorSlots
       .filter(slot => slot && slot.bookedBy && slot.duration === 60); // Ensure duration is 60
-    setAllBookedSlots(sortSlots([...bookedForCurrentUser])); // Set sorted booked slots (use spread to avoid mutating original)
+    setProfessorBookedSlots(sortSlots([...bookedForCurrentUser])); // Set sorted booked slots for this professor (use spread)
+
 
     // 4. Process slots for the *selected date* (if a date is selected)
     if (!selectedDate) {
@@ -236,15 +251,17 @@ export function ProfessorInterface() {
 
                  // Add all updated slots first
                  updatedSlots.forEach(slot => {
-                     if (slot) { // Ensure slot is not null/undefined
+                     if (slot && slot.id) { // Ensure slot and id exist
                          newProfessorSlots.push(slot);
                          processedIds.add(slot.id);
+                     } else {
+                         console.warn("Tentativo di salvare uno slot non valido o senza ID:", slot);
                      }
                  });
 
                  // Add existing slots that were NOT updated
                  currentProfessorSlots.forEach(slot => {
-                    if (slot && !processedIds.has(slot.id)) {
+                    if (slot && slot.id && !processedIds.has(slot.id)) {
                         newProfessorSlots.push(slot);
                     }
                  });
@@ -354,10 +371,6 @@ export function ProfessorInterface() {
         };
 
 
-        // Replace the old slot with the updated one in the professor's list
-        // No longer need this step as saveProfessorAvailability handles merging
-        // const updatedProfessorSlots = professorSlots.map(slot => slot.id === slotId ? updatedSlot : slot);
-
         // 5. Save updated data back to localStorage using the CENTRALIZED save function
         // Pass the single updated slot to the centralized function for merging
         saveProfessorAvailability([updatedSlot]);
@@ -365,7 +378,7 @@ export function ProfessorInterface() {
         // 6. Update UI state immediately by reloading slots (both daily and booked)
         loadAndGenerateSlots(); // This re-reads from the updated localStorage
 
-        toast({ title: "Prenotazione Cancellata", description: `Prenotazione per ${studentEmail} il ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy')} alle ${slotToCancel.time} cancellata. Lo slot è ora disponibile.` }); // Updated toast message
+        toast({ title: "Prenotazione Cancellata", description: `Prenotazione per ${studentEmail} il ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy HH:mm')} alle ${slotToCancel.time} cancellata. Lo slot è ora disponibile.` }); // Updated toast message
 
         // Potential Email Notification to Student (implement sendEmail service if needed)
         // try {
@@ -379,6 +392,49 @@ export function ProfessorInterface() {
 
   return (
     <div className="flex flex-col gap-6 p-4 w-full"> {/* Increased gap */}
+
+        {/* All Booked Lessons ACROSS ALL PROFESSORS Section */}
+       <Card className="w-full">
+            <CardHeader>
+                <CardTitle>Tutte le Lezioni Prenotate (Globale)</CardTitle>
+                <CardDescription>Elenco di tutte le lezioni prenotate nell'intero sistema, ordinate per data.</CardDescription>
+            </CardHeader>
+            <CardContent>
+               {allBookedLessonsAcrossProfessors.length === 0 ? (
+                    <p className="text-muted-foreground p-4 text-center">Nessuna lezione è attualmente prenotata nel sistema.</p>
+                ) : (
+                   <div className="overflow-x-auto border rounded-md max-h-96">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                              <TableHead className="w-32">Data</TableHead>
+                              <TableHead className="w-24">Ora</TableHead>
+                              <TableHead>Professore</TableHead>
+                              <TableHead>Studente</TableHead>
+                              <TableHead>Ora Prenotazione</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {allBookedLessonsAcrossProfessors.map((slot) => {
+                               // Defensively check if slot or slot.id exists before rendering row
+                               if (!slot || !slot.id) return null;
+                               return (
+                                    <TableRow key={`all-booked-${slot.id}`}>
+                                        <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy')}</TableCell>
+                                        <TableCell>{slot.time}</TableCell>
+                                        <TableCell>{slot.professorEmail}</TableCell>
+                                        <TableCell>{slot.bookedBy}</TableCell>
+                                        <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm') : 'N/A'}</TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                        </TableBody>
+                      </Table>
+                   </div>
+                )}
+            </CardContent>
+       </Card>
+
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Interfaccia Professore</CardTitle>
@@ -431,7 +487,7 @@ export function ProfessorInterface() {
                              <TableCell>{slot.time}</TableCell>
                              <TableCell className="text-center">{slot.duration} min</TableCell>
                              <TableCell className={`${statusColor} font-medium`}>{statusText}</TableCell>
-                             <TableCell className="text-center space-x-2"> {/* Added space-x-2 */}
+                             <TableCell className="text-center"> {/* Removed space-x-2 */}
                               {isBooked ? (
                                   <Button
                                       variant="ghost" // Display as plain text / ghost button
@@ -473,14 +529,14 @@ export function ProfessorInterface() {
         </CardContent>
       </Card>
 
-       {/* All Booked Lessons Section */}
+       {/* Professor's Booked Lessons Section */}
         <Card className="w-full">
              <CardHeader>
                  <CardTitle>Tutte le Tue Lezioni Prenotate</CardTitle>
                  <CardDescription>Elenco di tutte le lezioni attualmente prenotate con te. Puoi cancellare le prenotazioni da qui.</CardDescription>
              </CardHeader>
              <CardContent>
-                {allBookedSlots.length === 0 ? (
+                {professorBookedSlots.length === 0 ? (
                      <p className="text-muted-foreground p-4 text-center">Nessuna lezione è attualmente prenotata con te.</p>
                  ) : (
                     <div className="overflow-x-auto border rounded-md max-h-96">
@@ -496,11 +552,11 @@ export function ProfessorInterface() {
                            </TableRow>
                          </TableHeader>
                          <TableBody>
-                             {allBookedSlots.map((slot) => {
+                             {professorBookedSlots.map((slot) => {
                                 // Defensively check if slot or slot.id exists before rendering row
                                 if (!slot || !slot.id) return null;
                                 return (
-                                     <TableRow key={`booked-all-${slot.id}`}>
+                                     <TableRow key={`booked-prof-${slot.id}`}>
                                          <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy')}</TableCell>
                                          <TableCell>{slot.time}</TableCell>
                                          <TableCell className="text-center">{slot.duration} min</TableCell>
@@ -527,3 +583,4 @@ export function ProfessorInterface() {
     </div>
   );
 }
+

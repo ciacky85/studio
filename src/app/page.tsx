@@ -1,3 +1,4 @@
+
 'use client';
 
 import {useState, useEffect} from 'react';
@@ -134,7 +135,7 @@ export default function Home() {
         return (
           <Card className="w-full max-w-md p-4">
             <CardHeader>
-              <CardTitle>Login</CardTitle>
+              <CardTitle>Login Gestore Orario Aule</CardTitle>
               <CardDescription>Inserisci le tue credenziali per accedere all'applicazione.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -179,3 +180,4 @@ export default function Home() {
     </>
   );
 }
+
