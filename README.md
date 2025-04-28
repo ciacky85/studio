@@ -80,8 +80,9 @@ Docker Compose simplifies the process of building and running multi-container Do
 From the root directory of the project, run:
 
 ```bash
+# Build locally
 docker build -t classroom-scheduler .
-# OR to tag for GitHub Container Registry
+# OR tag for GitHub Container Registry
 # docker build -t ghcr.io/<github-username>/classroom-scheduler:latest .
 ```
 
@@ -112,15 +113,17 @@ docker run -p 3000:3000 \
     ```bash
     docker build -t ghcr.io/<github-username>/classroom-scheduler:latest .
     ```
+    Replace `<github-username>` with your GitHub username.
 2.  **Login:**
     ```bash
     docker login ghcr.io -u <github-username>
-    # Enter password or Personal Access Token
     ```
+    Enter your password or Personal Access Token (with `read:packages` and `write:packages` scopes).
 3.  **Push:**
     ```bash
     docker push ghcr.io/<github-username>/classroom-scheduler:latest
     ```
+    This command uploads your locally built image to the GitHub Container Registry.
 
 ### Deployment on Synology NAS (Using Container Manager)
 
@@ -147,4 +150,3 @@ Deploying to a Synology NAS using Container Manager typically involves these ste
 5.  **Firewall:** Ensure your Synology NAS firewall (Control Panel -> Security -> Firewall) allows incoming traffic on the *local port* you mapped (e.g., 3000).
 
 *Note: Specific UI elements and steps within the Synology Container Manager application might vary slightly depending on the DSM (DiskStation Manager) version.*
-
