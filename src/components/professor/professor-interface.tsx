@@ -342,12 +342,12 @@ export function ProfessorInterface() {
              return;
         }
 
-        // 3. Update the slot data: remove booking info, set isAvailable to false (professor needs to explicitly make it available again)
+        // 3. Update the slot data: remove booking info, set isAvailable to true
         const updatedSlot = {
             ...slotToCancel,
             bookedBy: null,
             bookingTime: null,
-            isAvailable: false, // IMPORTANT: Set to false. Professor must explicitly make available again.
+            isAvailable: true, // Set to true to make it available again
         };
 
 
@@ -362,7 +362,7 @@ export function ProfessorInterface() {
         // 6. Update UI state immediately by reloading slots (both daily and booked)
         loadAndGenerateSlots(); // This re-reads from the updated localStorage
 
-        toast({ title: "Booking Cancelled", description: `Booking for ${studentEmail} on ${format(parseISO(slotToCancel.date), 'PPP')} at ${slotToCancel.time} cancelled. Slot is now unavailable.` });
+        toast({ title: "Booking Cancelled", description: `Booking for ${studentEmail} on ${format(parseISO(slotToCancel.date), 'PPP')} at ${slotToCancel.time} cancelled. Slot is now available.` }); // Updated toast message
 
         // Potential Email Notification to Student (implement sendEmail service if needed)
         // try {
