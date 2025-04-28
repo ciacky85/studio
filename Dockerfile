@@ -1,64 +1,68 @@
-# Fase 1: Builder - Installa dipendenze e costruisci l'app
-FROM node:20.9.0-alpine AS builder
+# Base image for Node.js
+FROM node:20.9.0-alpine AS base
 
-# Imposta la directory di lavoro nell'immagine
+# Install dependencies only when needed
+FROM base AS deps
+# Install dependencies required for native modules, and remove temporary build packages
+RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
-# Copia package.json e package-lock.json (o yarn.lock)
-COPY package.json package-lock.json* ./
+# Copy package.json
+COPY package.json ./
 
-# Installa le dipendenze in modo pulito (più veloce e affidabile in CI/CD)
-# Assicurati di avere package-lock.json nel tuo progetto
-RUN npm ci
+# Remove existing package-lock.json (if copied) to force regeneration
+# Warning: This bypasses the lock file mechanism and is generally not recommended for reproducible builds.
+RUN rm -f package-lock.json*
 
-# Copia la directory public SE ESISTE (importante!)
-# Questo assicura che sia disponibile per la build e la copia successiva
-COPY public ./public
+# Install dependencies using npm install (will generate a new package-lock.json)
+RUN npm install
 
-# Copia il resto del codice sorgente dell'applicazione
-# L'ordine è importante: copia le dipendenze e installale prima del codice sorgente
-# per sfruttare la cache di Docker se il codice cambia ma le dipendenze no.
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Esponi la porta che Next.js userà durante la build (se necessario, di solito non lo è)
-# EXPOSE 3000
+# Next.js collects completely anonymous telemetry data about general usage.
+# Learn more here: https://nextjs.org/telemetry
+# Uncomment the following line in case you want to disable telemetry.
+# ENV NEXT_TELEMETRY_DISABLED 1
 
-# Esegui il build dell'applicazione Next.js
-# Questo crea la cartella .next ottimizzata per la produzione
+# Environment variables needed for build
+ARG EMAIL_USER
+ARG EMAIL_PASS
+ARG GOOGLE_GENAI_API_KEY
+ENV EMAIL_USER=${EMAIL_USER}
+ENV EMAIL_PASS=${EMAIL_PASS}
+ENV GOOGLE_GENAI_API_KEY=${GOOGLE_GENAI_API_KEY}
+ENV NEXT_PUBLIC_EMAIL_USER=${EMAIL_USER} # Example if needed client-side
+
 RUN npm run build
 
-# Fase 2: Runner - Crea un'immagine leggera per l'esecuzione
-FROM node:20.9.0-alpine AS runner
-
+# Production image, copy all the files and run next
+FROM base AS runner
 WORKDIR /app
 
-# Imposta l'ambiente a production
-ENV NODE_ENV=production
-# Non è necessario specificare la porta qui, viene fatto in docker-compose o docker run
-# ENV PORT=3000
+ENV NODE_ENV production
+# Uncomment the following line in case you want to disable telemetry during runtime.
+# ENV NEXT_TELEMETRY_DISABLED 1
 
-# Crea un utente non root per motivi di sicurezza
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copia la build dall'immagine builder
-# Copia solo le cartelle necessarie per eseguire l'app in produzione
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-# Copia la cartella public dalla fase builder (se esisteva)
+# Copy necessary files from the builder stage
 COPY --from=builder /app/public ./public
-# Copia la versione standalone creata da `output: 'standalone'` in next.config.js
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
+# Set the correct permission for prerender cache - ensure directory exists first
+RUN mkdir -p .next && chown nextjs:nodejs .next
 
-# Cambia utente
 USER nextjs
 
-# Esponi la porta su cui l'app verrà eseguita nel container
 EXPOSE 3000
 
-# Comando per avviare l'applicazione Next.js in produzione
-# Utilizza la versione standalone
-CMD ["node", "server.js"]
+ENV PORT 3000
+# SERVER_BASE_PATH environment variable is automatically set by Next.js to the output directory
+# CMD ["node", "server.js"] # This command is correct for standalone output
+CMD ["node", "standalone/server.js"] # Updated path for standalone output
