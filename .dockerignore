@@ -2,35 +2,34 @@
 .git
 .gitignore
 
-# Docker files
-Dockerfile
-.dockerignore
-
 # Node modules
 node_modules
 
 # Next.js build output
 .next
 
-# Environment variables file (should be passed at runtime)
-.env
-.env*.local
+# Environment variables
+.env*
+!.env.example
 
-# Development logs and temporary files
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-*.env
-
-# README (optional, can be included if desired)
-README.md
+# Docker files
+Dockerfile
+docker-compose.yml
 
 # VSCode specific
 .vscode
 
-# Other potentially large or unnecessary files
-# Add any other files/folders you don't want in the image
-# e.g., specific large assets not in public/, test files
-# tests/
-# *.test.ts
-# *.spec.ts
+# Log files
+*.log
+
+# Temp files
+*.tmp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Test files (optional)
+# coverage
+# src/**/*.test.*
+# src/**/*.spec.*

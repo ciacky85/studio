@@ -1,49 +1,41 @@
-# Dockerfile
-# Fase 1: Installazione Dipendenze e Build
-FROM node:20-alpine AS deps
+# Stage 1: Base image with Node.js LTS
+FROM node:20-alpine AS base
 WORKDIR /app
-COPY package.json package-lock.json* ./
-# Ensure lock file is copied if it exists, handle potential errors if not present
-# Use npm ci if lock file exists for deterministic installs, otherwise fallback to install
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-FROM node:20-alpine AS builder
+# Stage 2: Install dependencies
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production --ignore-scripts
+
+# Stage 3: Build the application
+FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-# Copy config files first to ensure they are available for the build context
-COPY tsconfig.json next.config.ts ./
-# Copy the rest of the application code
 COPY . .
 
-# Build the application
-# The build process should now fail if there are underlying TypeScript or ESLint errors
-# because ignoreBuildErrors and ignoreDuringBuilds were removed from next.config.ts.
-# Fix any reported errors before proceeding.
+# Add environment variables needed for build (if any)
+# ENV NEXT_PUBLIC_API_URL=http://example.com
+
 RUN npm run build
 
-# Fase 2: Immagine di Produzione
-FROM node:20-alpine AS runner
+# Stage 4: Production image
+FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-# It's generally safer to run as a non-root user, but comment out for now
-# to simplify potential permission issues during debugging.
-# USER node
+ENV NODE_ENV=production
+# Don't run production as root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+USER nextjs
 
-# Copy necessary files from the builder stage for standalone output
+# Copy necessary files from previous stages
 COPY --from=builder /app/public ./public
-# Copy the standalone directory which includes server.js and necessary node_modules
-COPY --from=builder /app/.next/standalone ./
-# Copy static assets generated during the build
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# If running as USER node, uncomment the following line after COPY commands
-# RUN chown -R node:node .
-
+# Expose the port the app runs on
 EXPOSE 3000
 
-# Set port for the Node.js server inside the container
-ENV PORT 3000
-
-# Command to start the application using the standalone server script
+# Set the correct CMD to run the standalone output
 CMD ["node", "server.js"]
