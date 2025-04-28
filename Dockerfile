@@ -1,68 +1,61 @@
-# Base image for Node.js
-FROM node:20.9.0-alpine AS base
+# Stage 1: Builder
+# Use a specific Node.js version compatible with the project
+FROM node:20.9.0-alpine AS builder
 
-# Install dependencies only when needed
-FROM base AS deps
-# Install dependencies required for native modules, and remove temporary build packages
-RUN apk add --no-cache libc6-compat python3 make g++
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy package.json
-COPY package.json ./
+# Copy package.json and package-lock.json (or yarn.lock if used)
+# Ensure package-lock.json exists or run `npm install` locally first to generate it
+COPY package.json package-lock.json* ./
+# If using yarn:
+# COPY package.json yarn.lock ./
 
-# Remove existing package-lock.json (if copied) to force regeneration
-# Warning: This bypasses the lock file mechanism and is generally not recommended for reproducible builds.
-RUN rm -f package-lock.json*
+# Install dependencies using npm ci for faster, more reliable builds from lock file
+# If package-lock.json wasn't present, Docker will create it here if not ignored
+RUN npm ci
+# If using yarn:
+# RUN yarn install --frozen-lockfile
 
-# Install dependencies using npm install (will generate a new package-lock.json)
-RUN npm install
-
-# Rebuild the source code only when needed
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Copy the rest of the application code
+# Ensure .dockerignore doesn't exclude necessary source files (like src)
 COPY . .
 
-# Next.js collects completely anonymous telemetry data about general usage.
-# Learn more here: https://nextjs.org/telemetry
-# Uncomment the following line in case you want to disable telemetry.
-# ENV NEXT_TELEMETRY_DISABLED 1
+# Set environment variable for Next.js build
+ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV production
 
-# Environment variables needed for build
-ARG EMAIL_USER
-ARG EMAIL_PASS
-ARG GOOGLE_GENAI_API_KEY
-ENV EMAIL_USER=${EMAIL_USER}
-ENV EMAIL_PASS=${EMAIL_PASS}
-ENV GOOGLE_GENAI_API_KEY=${GOOGLE_GENAI_API_KEY}
-ENV NEXT_PUBLIC_EMAIL_USER=${EMAIL_USER} # Example if needed client-side
-
+# Build the Next.js application
+# This assumes your build script is defined in package.json
 RUN npm run build
 
-# Production image, copy all the files and run next
-FROM base AS runner
+# Stage 2: Production Runner
+# Use a lightweight Node.js image for the production environment
+FROM node:20.9.0-alpine AS runner
+
+# Set the working directory
 WORKDIR /app
 
-ENV NODE_ENV production
-# Uncomment the following line in case you want to disable telemetry during runtime.
-# ENV NEXT_TELEMETRY_DISABLED 1
-
+# Create a non-root user for security
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copy necessary files from the builder stage
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+# Copy only the production build artifacts
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Set the correct permission for prerender cache - ensure directory exists first
-RUN mkdir -p .next && chown nextjs:nodejs .next
+# Public directory is often needed for static assets like images
+# Check if your app uses a public directory and uncomment if needed
+# COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
+# Switch to the non-root user
 USER nextjs
 
+# Expose the port the app runs on (default Next.js port is 3000)
 EXPOSE 3000
 
-ENV PORT 3000
-# SERVER_BASE_PATH environment variable is automatically set by Next.js to the output directory
-# CMD ["node", "server.js"] # This command is correct for standalone output
-CMD ["node", "standalone/server.js"] # Updated path for standalone output
+# Set the default command to run the application
+# Use the node server directly for standalone output
+# Ensure the path to server.js is correct for standalone output
+CMD ["node", "server.js"]
