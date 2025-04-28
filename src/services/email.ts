@@ -38,7 +38,8 @@ const transporter = nodemailer.createTransport({
  */
 export async function sendEmail(emailDetails: EmailDetails): Promise<void> {
   const mailOptions = {
-    from: process.env.EMAIL_USER, // Sender address
+    // Update the from field to include the display name
+    from: `"Singin' is the present" <${process.env.EMAIL_USER}>`, // Sender address with display name
     to: emailDetails.to, // List of receivers
     subject: emailDetails.subject, // Subject line
     html: emailDetails.html, // HTML body
@@ -57,3 +58,4 @@ export async function sendEmail(emailDetails: EmailDetails): Promise<void> {
     throw new Error(`Impossibile inviare l'email a ${emailDetails.to}. Errore: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+
