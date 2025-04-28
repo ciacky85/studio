@@ -52,18 +52,19 @@ const TableFooter = React.forwardRef<
 TableFooter.displayName = "TableFooter"
 
 // Ensure no whitespace inside this tag or before/after it in usage
+// Removed any potential whitespace around the <tr> tag itself.
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
 >(({ className, ...props }, ref) => (
-  <tr
-    ref={ref}
-    className={cn(
-      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
-      className
-    )}
-    {...props}
-  />
+<tr
+  ref={ref}
+  className={cn(
+    "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+    className
+  )}
+  {...props}
+/>
 ));
 TableRow.displayName = "TableRow"
 
