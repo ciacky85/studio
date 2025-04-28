@@ -10,6 +10,7 @@ import { format, isBefore, startOfDay, parseISO, differenceInHours } from 'date-
 import { it } from 'date-fns/locale'; // Import Italian locale
 import type { UserData } from '@/types/user'; // Import UserData type
 import { sendEmail } from '@/services/email'; // Import the email service
+import { getCalendarLinksFromSlot } from '@/lib/calendar-utils'; // Import calendar utils
 
 // Define the structure of a slot as seen by the student (now 60 min)
 interface StudentSlotView {
@@ -215,6 +216,11 @@ export function StudentInterface() {
         // Prepare email details
         const formattedDate = format(parseISO(slotToBook.date), 'dd/MM/yyyy', { locale: it });
         const formattedTime = slotToBook.time;
+        const eventTitleStudent = `Lezione con Prof. ${slotToBook.professorEmail}`;
+        const eventTitleProfessor = `Lezione con Studente ${currentUserEmail}`;
+        const { addLink: addLinkStudent } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleStudent, eventTitleStudent, `Lezione prenotata con ${slotToBook.professorEmail}`);
+        const { addLink: addLinkProfessor } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleProfessor, eventTitleProfessor, `Lezione prenotata da ${currentUserEmail}`);
+
 
         // Send confirmation emails
         try {
@@ -222,14 +228,16 @@ export function StudentInterface() {
           await sendEmail({
             to: currentUserEmail,
             subject: 'Conferma Prenotazione Lezione',
-            html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p>`,
+            html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p>
+                   <p>Aggiungi al tuo calendario Google: <a href="${addLinkStudent}">Aggiungi al Calendario</a></p>`,
           });
 
           // Email to Professor
           await sendEmail({
             to: slotToBook.professorEmail,
             subject: 'Nuova Prenotazione Ricevuta',
-            html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dallo studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime}.</p>`,
+            html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dallo studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime}.</p>
+                   <p>Aggiungi al tuo calendario Google: <a href="${addLinkProfessor}">Aggiungi al Calendario</a></p>`,
           });
         } catch (emailError) {
            console.error("Errore invio email di conferma:", emailError);
@@ -307,6 +315,11 @@ export function StudentInterface() {
              // Prepare email details
              const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
              const formattedTime = slotToCancel.time;
+             const eventTitleStudent = `Lezione con Prof. ${slotToCancel.professorEmail}`;
+             const eventTitleProfessor = `Lezione con Studente ${currentUserEmail}`;
+             const { deleteLink: deleteLinkStudent } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleStudent, eventTitleStudent);
+             const { deleteLink: deleteLinkProfessor } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleProfessor, eventTitleProfessor);
+
 
              // Send cancellation emails
              try {
@@ -314,14 +327,16 @@ export function StudentInterface() {
                await sendEmail({
                  to: currentUserEmail,
                  subject: 'Conferma Cancellazione Lezione',
-                 html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>`,
+                 html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
+                        <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkStudent}">Rimuovi dal Calendario</a></p>`,
                });
 
                // Email to Professor
                await sendEmail({
                  to: slotToCancel.professorEmail,
                  subject: 'Prenotazione Cancellata',
-                 html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione dello studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>`,
+                 html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione dello studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
+                        <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>`,
                });
              } catch (emailError) {
                console.error("Errore invio email di cancellazione:", emailError);
@@ -430,4 +445,3 @@ export function StudentInterface() {
     </div>
   );
 }
-

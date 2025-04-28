@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator'; // Import Separator
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Import Tabs
 import type { UserData } from '@/types/user'; // Import UserData type
 import { sendEmail } from '@/services/email'; // Import the email service
+import { getCalendarLinksFromSlot } from '@/lib/calendar-utils'; // Import calendar utils
 
 
 // Define the structure of a bookable slot (common structure)
@@ -266,11 +267,14 @@ export function ProfessorInterface() {
              const formattedSelectedDate = format(selectedDate, 'yyyy-MM-dd');
 
              // Create a map of the updated slots for the current day for quick lookup
-             const updatedDaySlotMap = new Map(updatedSlotsForDay.map(slot => [slot.id, slot]));
+             // Filter out invalid slot data before creating the map
+             const validUpdatedSlotsForDay = updatedSlotsForDay.filter(slot => slot && slot.id && slot.date && slot.time && slot.duration === 60);
+             const updatedDaySlotMap = new Map(validUpdatedSlotsForDay.map(slot => [slot.id, slot]));
+
 
              // Filter out the old slots for the selected date and merge with the new ones
-             const newProfessorSlots = currentProfessorSlots.filter(slot => slot.date !== formattedSelectedDate);
-             newProfessorSlots.push(...updatedSlotsForDay); // Add all slots for the current day (updated/new)
+             const newProfessorSlots = currentProfessorSlots.filter(slot => slot && slot.date !== formattedSelectedDate);
+             newProfessorSlots.push(...validUpdatedSlotsForDay); // Add all VALID slots for the current day (updated/new)
 
 
              // Filter out potentially invalid slots before sorting and saving
@@ -338,6 +342,9 @@ export function ProfessorInterface() {
         // Prepare email details BEFORE updating the slot
         const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
         const formattedTime = slotToCancel.time;
+        const eventTitle = `Lezione con Prof. ${currentUserEmail}`;
+        const { deleteLink } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitle, eventTitle);
+
 
         // Update the slot to be available again
         const updatedSlot = { ...slotToCancel, bookedBy: null, bookingTime: null, isAvailable: true }; // Explicitly set isAvailable to true
@@ -356,7 +363,8 @@ export function ProfessorInterface() {
           await sendEmail({
             to: bookerEmail,
             subject: 'Lezione Cancellata dal Professore',
-            html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata dal professore.</p>`,
+            html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata dal professore.</p>
+                   <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLink}">Rimuovi dal Calendario</a></p>`,
           });
 
           // Confirmation email to the Professor (optional, but good practice)
@@ -381,7 +389,7 @@ export function ProfessorInterface() {
 
         toast({ title: "Prenotazione Cancellata", description: `Prenotazione da ${bookerEmail} per ${formattedDate} alle ${formattedTime} cancellata. Lo slot è di nuovo disponibile.` });
     }
-  }, [currentUserEmail, loadAndGenerateOwnSlots, saveOwnAvailability, toast, loadSlotsToBook]); // Removed saveOwnAvailability dependency as it's handled internally now
+  }, [currentUserEmail, loadAndGenerateOwnSlots, toast, loadSlotsToBook]); // Removed saveOwnAvailability dependency
 
 
   // --- Functions for Booking Lessons with OTHER Professors ---
@@ -447,6 +455,11 @@ export function ProfessorInterface() {
            // Prepare email details
             const formattedDate = format(parseISO(slotToBook.date), 'dd/MM/yyyy', { locale: it });
             const formattedTime = slotToBook.time;
+            const eventTitleBooker = `Lezione con Prof. ${slotToBook.professorEmail}`;
+            const eventTitleProfessor = `Lezione con Prof. ${currentUserEmail}`;
+            const { addLink: addLinkBooker } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleBooker, eventTitleBooker, `Lezione prenotata con ${slotToBook.professorEmail}`);
+            const { addLink: addLinkProfessor } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleProfessor, eventTitleProfessor, `Lezione prenotata da ${currentUserEmail}`);
+
 
             // Send confirmation emails
             try {
@@ -454,14 +467,16 @@ export function ProfessorInterface() {
               await sendEmail({
                 to: currentUserEmail,
                 subject: 'Conferma Prenotazione Lezione con Collega',
-                html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p>`,
+                html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p>
+                       <p>Aggiungi al tuo calendario Google: <a href="${addLinkBooker}">Aggiungi al Calendario</a></p>`,
               });
 
               // Email to the Professor whose slot was booked
               await sendEmail({
                 to: slotToBook.professorEmail,
                 subject: 'Nuova Prenotazione Ricevuta da Collega',
-                html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dal Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime}.</p>`,
+                html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dal Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime}.</p>
+                       <p>Aggiungi al tuo calendario Google: <a href="${addLinkProfessor}">Aggiungi al Calendario</a></p>`,
               });
             } catch (emailError) {
                console.error("Errore invio email di conferma (prof-prof):", emailError);
@@ -541,6 +556,11 @@ export function ProfessorInterface() {
            // Prepare email details
            const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
            const formattedTime = slotToCancel.time;
+           const eventTitleBooker = `Lezione con Prof. ${slotToCancel.professorEmail}`;
+           const eventTitleProfessor = `Lezione con Prof. ${currentUserEmail}`;
+           const { deleteLink: deleteLinkBooker } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleBooker, eventTitleBooker);
+           const { deleteLink: deleteLinkProfessor } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleProfessor, eventTitleProfessor);
+
 
            // Send cancellation emails
            try {
@@ -548,14 +568,16 @@ export function ProfessorInterface() {
              await sendEmail({
                to: currentUserEmail,
                subject: 'Conferma Cancellazione Lezione con Collega',
-               html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>`,
+               html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
+                      <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkBooker}">Rimuovi dal Calendario</a></p>`,
              });
 
              // Email to the Professor whose slot was cancelled
              await sendEmail({
                to: slotToCancel.professorEmail,
                subject: 'Prenotazione Cancellata da Collega',
-               html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione del Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>`,
+               html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione del Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p>
+                      <p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>`,
              });
            } catch (emailError) {
              console.error("Errore invio email di cancellazione (prof-prof):", emailError);
@@ -581,7 +603,6 @@ export function ProfessorInterface() {
        <Tabs defaultValue="manage-availability" className="w-full">
             <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2"> {/* Reduced to 2 columns */}
                 <TabsTrigger value="manage-availability">Gestisci Disponibilità</TabsTrigger>
-                {/* Removed the second tab */}
                 <TabsTrigger value="book-lessons">Prenota Lezioni con Altri Professori</TabsTrigger>
             </TabsList>
 
@@ -615,9 +636,9 @@ export function ProfessorInterface() {
                                     <TableBody>
                                       {dailySlots.map((slot) => {
                                         const isBooked = !!slot.bookedBy;
-                                        const statusText = isBooked ? 'Prenotato' : (slot.isAvailable ? 'Disponibile per Prenotazione' : 'Non Disponibile'); // Updated status text
+                                        const statusText = isBooked ? 'Prenotato' : (slot.isAvailable ? 'Disponibile per Prenotazione' : 'Non Disponibile');
                                         const statusColor = isBooked ? 'text-gray-500' : (slot.isAvailable ? 'text-green-600' : 'text-red-600');
-                                        const isPast = selectedDate ? isBefore(selectedDate, startOfDay(new Date())) : false; // Determine if the date is in the past
+                                        const isPast = selectedDate ? isBefore(selectedDate, startOfDay(new Date())) : false;
 
                                         return (
                                           <TableRow key={slot.id}>
@@ -626,23 +647,19 @@ export function ProfessorInterface() {
                                             <TableCell className={`${statusColor} font-medium`}>{statusText}</TableCell>
                                             <TableCell className="text-center">
                                                  {isBooked ? (
-                                                     // Render non-clickable "Prenotato" text (or grayed out button)
                                                       <span className="text-muted-foreground font-normal px-1 italic">Prenotato</span>
-                                                     // <Button variant="outline" size="sm" disabled className="cursor-not-allowed">Prenotato</Button>
                                                  ) : isPast ? (
-                                                     // Render disabled placeholder for past dates
                                                       <span className="text-muted-foreground font-normal px-1 italic">Passato</span>
                                                  ) : (
-                                                     // Render toggle button if not booked and not past
                                                      <Button
                                                          onClick={() => toggleSlotAvailability(slot.id)}
                                                          variant={slot.isAvailable ? 'destructive' : 'default'}
                                                          size="sm"
                                                          className={cn(
-                                                             'text-white', // Ensure text color contrasts with background
+                                                             'text-white',
                                                              slot.isAvailable
-                                                                 ? 'bg-red-600 hover:bg-red-700' // Red if available (action is to make unavailable)
-                                                                 : 'bg-green-600 hover:bg-green-700' // Green if unavailable (action is to make available)
+                                                                 ? 'bg-red-600 hover:bg-red-700'
+                                                                 : 'bg-green-600 hover:bg-green-700'
                                                          )}
                                                      >
                                                          {slot.isAvailable ? 'Rendi Non Disponibile' : 'Rendi Disponibile'}
@@ -779,4 +796,3 @@ export function ProfessorInterface() {
     </div>
   );
 }
-
