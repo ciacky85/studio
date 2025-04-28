@@ -1,74 +1,69 @@
-# Stage 1: Build the Next.js application
-FROM node:20-alpine AS builder
+# Use an official Node.js runtime as a parent image
+# Use Node.js 20 LTS (Iron)
+FROM node:20-slim AS base
 
-# Set working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json (or yarn.lock)
+# Install pnpm globally - If you prefer npm or yarn, adjust accordingly
+# RUN npm install -g pnpm
+
+# Set up environment for production by default
+ENV NODE_ENV=production
+# Disable Genkit telemetry unless explicitly enabled
+ENV GENKIT_TELEMETRY_DISABLED=1
+
+# --- Dependencies Stage ---
+FROM base AS deps
+WORKDIR /app
+
+# Copy package.json and lock file
+# Use pnpm-lock.yaml if using pnpm, package-lock.json for npm, yarn.lock for yarn
 COPY package.json ./
+# COPY pnpm-lock.yaml ./
 COPY package-lock.json ./
-# If you use yarn, copy yarn.lock instead:
-# COPY yarn.lock ./
 
-# Install dependencies
-RUN npm install --frozen-lockfile
+# Install dependencies using pnpm (adjust if using npm or yarn)
+# RUN pnpm install --frozen-lockfile --prod=false
+RUN npm install --frozen-lockfile --omit=dev
 
-# Copy the rest of the application code
+# --- Builder Stage ---
+FROM base AS builder
+WORKDIR /app
+
+# Copy dependencies from the 'deps' stage
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Set build-time arguments for environment variables needed during build
-# These won't be directly used in the build but shows the pattern if needed
-ARG GOOGLE_GENAI_API_KEY
-ARG EMAIL_USER
-ARG EMAIL_PASS
-
-# Set environment variables for the build process (if needed by build)
-# Note: These are generally NOT needed for Next.js build unless specifically used in getStaticProps/Paths without runtime access
-# ENV GOOGLE_GENAI_API_KEY=$GOOGLE_GENAI_API_KEY
-# ENV EMAIL_USER=$EMAIL_USER
-# ENV EMAIL_PASS=$EMAIL_PASS
-
 # Build the Next.js application
-# The build automatically includes server components and optimizes the app
+# If using pnpm: RUN pnpm build
+# If using npm:
 RUN npm run build
 
-# Stage 2: Production environment
-FROM node:20-alpine AS runner
-
-# Set working directory
+# --- Runner Stage ---
+FROM base AS runner
 WORKDIR /app
 
-# Set environment variables required at runtime
-# Use ARG to allow overriding during build, but primarily set via ENV for runtime
-ARG NODE_ENV=production
-ENV NODE_ENV=${NODE_ENV}
-
-ARG GOOGLE_GENAI_API_KEY
-ENV GOOGLE_GENAI_API_KEY=${GOOGLE_GENAI_API_KEY}
-
-ARG EMAIL_USER
-ENV EMAIL_USER=${EMAIL_USER}
-
-ARG EMAIL_PASS
-ENV EMAIL_PASS=${EMAIL_PASS}
-
-# Optionally set the port, default is 3000 for `next start`
-ARG PORT=3000
-ENV PORT=${PORT}
-
-# Install necessary production packages (e.g., sharp for next/image)
-# RUN apk add --no-cache libc6-compat
-# RUN npm install --production sharp # Or install directly if needed
-
-# Copy built application from the builder stage
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+# Copy necessary files from the builder stage
+COPY --from=builder /app/next.config.js ./
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+# Copy node_modules from the deps stage (contains only production deps)
+# Ensure node_modules are copied correctly for standalone output
+# The standalone output copies necessary node_modules itself,
+# so copying from 'deps' might not be needed or could conflict.
+# Verify if node_modules are correctly included in ./standalone/node_modules
+# If not, uncomment the line below:
+# COPY --from=deps /app/node_modules ./node_modules
 
 # Expose the port the app runs on
-EXPOSE ${PORT}
+EXPOSE 3000
 
-# Command to run the application
-# Use the standard `next start` which relies on the build output
-CMD ["npm", "start"]
+# Define the command to run the application
+# Use the Node.js server included in the standalone output
+CMD ["node", "server.js"]
+
+# Optional: Add healthcheck
+# HEALTHCHECK --interval=5m --timeout=3s \
+#   CMD curl -f http://localhost:3000 || exit 1
