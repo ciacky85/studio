@@ -21,6 +21,7 @@ import { format, parseISO } from 'date-fns'; // Import date-fns functions
 import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
 import { cn } from "@/lib/utils"; // Import cn for conditional classes
 import type {DisplayUser} from '@/types/display-user'; // Use DisplayUser type
+import { it } from 'date-fns/locale'; // Import Italian locale
 
 
 // Define the structure of a bookable slot (from professor/student perspective)
@@ -53,6 +54,29 @@ const LOGGED_IN_USER_KEY = 'loggedInUser';
 
 // Define available classrooms
 const classrooms = ['Aula 1 Grande', 'Aula 2 Piccola'];
+
+// Define a color palette for professors
+const professorColors = [
+  'bg-blue-100 dark:bg-blue-900',
+  'bg-yellow-100 dark:bg-yellow-900',
+  'bg-purple-100 dark:bg-purple-900',
+  'bg-pink-100 dark:bg-pink-900',
+  'bg-indigo-100 dark:bg-indigo-900',
+  'bg-teal-100 dark:bg-teal-900',
+  'bg-orange-100 dark:bg-orange-900',
+  'bg-lime-100 dark:bg-lime-900',
+  'bg-cyan-100 dark:bg-cyan-900',
+  'bg-emerald-100 dark:bg-emerald-900',
+];
+
+// Function to get a color class based on professor email
+const getProfessorColor = (professorEmail: string, allProfessors: string[]): string => {
+    const index = allProfessors.indexOf(professorEmail);
+    if (index === -1) {
+        return ''; // No color if professor not found (shouldn't happen)
+    }
+    return professorColors[index % professorColors.length];
+};
 
 
 export function AdminInterface() {
@@ -199,8 +223,18 @@ export function AdminInterface() {
 
   // Save schedule to local storage whenever it changes (uses new key)
   useEffect(() => {
-     if (typeof window !== 'undefined' && Object.keys(schedule).length > 0) {
-       localStorage.setItem(CLASSROOM_SCHEDULE_KEY, JSON.stringify(schedule));
+     if (typeof window !== 'undefined') { // Check if schedule is not empty before saving
+        // Avoid saving an empty object if it was initialized empty and never changed
+        if(Object.keys(schedule).length > 0) {
+           localStorage.setItem(CLASSROOM_SCHEDULE_KEY, JSON.stringify(schedule));
+        } else {
+            // If schedule becomes empty (e.g., by unassigning all), remove the item
+            // This prevents saving {} if it was loaded as {} and never modified.
+            const storedSchedule = localStorage.getItem(CLASSROOM_SCHEDULE_KEY);
+            if(storedSchedule && storedSchedule !== '{}') { // Only remove if it existed and wasn't empty
+                localStorage.removeItem(CLASSROOM_SCHEDULE_KEY);
+            }
+        }
      }
   }, [schedule]); // Dependency array includes schedule
 
@@ -309,14 +343,8 @@ export function AdminInterface() {
     const newAssignment: ScheduleAssignment = {
         professor: professorEmail === 'unassigned' ? '' : professorEmail
     };
-    setSchedule(prevSchedule => {
-        const newSchedule = { ...prevSchedule, [key]: newAssignment };
-        // Save to localStorage immediately after state update
-        if (typeof window !== 'undefined') {
-            localStorage.setItem(CLASSROOM_SCHEDULE_KEY, JSON.stringify(newSchedule));
-        }
-        return newSchedule;
-    });
+    setSchedule(prevSchedule => ({ ...prevSchedule, [key]: newAssignment }));
+    // Note: Saving to localStorage is now handled by the useEffect hook listening to schedule changes
 };
 
 
@@ -420,12 +448,14 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                                 const scheduleKey = `${day}-${time}-${classroom}`;
                                                 const assignment = schedule[scheduleKey];
                                                 const assignedProfessor = assignment?.professor || ''; // Default to empty string if no assignment or no professor
+                                                // Determine the color based on the assigned professor
+                                                const professorColorClass = assignedProfessor ? getProfessorColor(assignedProfessor, professors) : '';
                                                 return (
                                                     <TableCell
                                                         key={scheduleKey}
                                                         className={cn(
                                                             'border-l',
-                                                            assignedProfessor ? 'bg-green-100 dark:bg-green-900' : ''
+                                                            professorColorClass // Apply the specific professor's color
                                                         )}
                                                     >
                                                         <Select
@@ -574,12 +604,12 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                      <TableBody>
                                          {allBookedSlots.map((slot) => (
                                              <TableRow key={`booked-${slot.id}`}>
-                                                 <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy')}</TableCell>
+                                                 <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                                                  <TableCell>{slot.time}</TableCell>
                                                  <TableCell>{slot.classroom}</TableCell> {/* Display Classroom */}
                                                  <TableCell>{slot.professorEmail}</TableCell>
                                                  <TableCell>{slot.bookedBy}</TableCell>
-                                                 <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm') : 'N/A'}</TableCell>
+                                                 <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm', { locale: it }) : 'N/A'}</TableCell>
                                              </TableRow>
                                          ))}
                                      </TableBody>
