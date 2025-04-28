@@ -367,17 +367,20 @@ export function StudentInterface() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {allAvailableSlots.map((slot) => (
-                          <TableRow key={`available-${slot.id}`}>
-                            <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell> {/* Format date */}
-                            <TableCell>{slot.time}</TableCell>
-                            <TableCell>{slot.professorEmail}</TableCell>
-                            <TableCell className="text-center">{slot.duration} min</TableCell>
-                            <TableCell className="text-center">
-                              <Button onClick={() => bookSlot(slot)} size="sm">Book</Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {allAvailableSlots.map((slot) => {
+                          // Construct each TableRow individually to avoid whitespace issues
+                          return (
+                            <TableRow key={`available-${slot.id}`}>
+                              <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
+                              <TableCell>{slot.time}</TableCell>
+                              <TableCell>{slot.professorEmail}</TableCell>
+                              <TableCell className="text-center">{slot.duration} min</TableCell>
+                              <TableCell className="text-center">
+                                <Button onClick={() => bookSlot(slot)} size="sm">Book</Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
@@ -415,6 +418,7 @@ export function StudentInterface() {
                          // Check if cancellation is allowed (more than 24 hours before)
                          const canCancel = differenceInHours(lessonDateTime, new Date()) >= 24;
 
+                         // Construct each TableRow individually
                          return (
                            <TableRow key={`booked-${slot.id}`}>
                              <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
