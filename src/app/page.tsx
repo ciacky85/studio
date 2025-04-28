@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import {useState, useEffect} from 'react';
@@ -116,7 +117,7 @@ export default function Home() {
 
     // Clear password field on error to allow retries easily, keep username
     // Now this check can safely access the variables
-    if (loginError || !(userFound && correctPassword && userApproved)) { // Clear password if any error occurs
+    if (!(userFound && correctPassword && userApproved)) { // Clear password if any error occurs or login fails
       setPassword('');
     }
   };
@@ -135,7 +136,7 @@ export default function Home() {
         return (
           <Card className="w-full max-w-md p-4">
             <CardHeader>
-              <CardTitle>Login Gestore Orario Aule</CardTitle>
+              <CardTitle>Creative Academy Booking</CardTitle> {/* Updated Title */}
               <CardDescription>Inserisci le tue credenziali per accedere all'applicazione.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -180,4 +181,5 @@ export default function Home() {
     </>
   );
 }
+
 
