@@ -38,7 +38,6 @@ export function ProfessorInterface() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date()); // Default to today
   const [dailySlots, setDailySlots] = useState<BookableSlot[]>([]);
   const [professorBookedSlots, setProfessorBookedSlots] = useState<BookableSlot[]>([]); // State for booked slots for THIS professor
-  const [allBookedLessonsAcrossProfessors, setAllBookedLessonsAcrossProfessors] = useState<BookableSlot[]>([]); // State for ALL booked lessons
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const {toast} = useToast();
 
@@ -87,7 +86,6 @@ export function ProfessorInterface() {
     if (typeof window === 'undefined' || !currentUserEmail) {
       setDailySlots([]); // Clear slots if no user or on server
       setProfessorBookedSlots([]); // Clear booked slots as well
-      setAllBookedLessonsAcrossProfessors([]); // Clear all booked lessons
       return;
     }
 
@@ -129,17 +127,6 @@ export function ProfessorInterface() {
 
     // Get the current professor's full list of slots from the loaded data
     const professorSlots = allProfessorAvailability[currentUserEmail] || [];
-    const allBookedLessons: BookableSlot[] = [];
-
-    // Iterate through ALL professors' slots to find ALL booked lessons
-    Object.values(allProfessorAvailability).flat().forEach(slot => {
-      if (slot && slot.bookedBy && slot.duration === 60) {
-        allBookedLessons.push(slot);
-      }
-    });
-
-    // Sort and set ALL booked lessons across all professors
-    setAllBookedLessonsAcrossProfessors(sortSlots([...allBookedLessons]));
 
 
     // 3. Filter and sort booked slots for the CURRENT professor
@@ -393,48 +380,6 @@ export function ProfessorInterface() {
   return (
     <div className="flex flex-col gap-6 p-4 w-full"> {/* Increased gap */}
 
-        {/* All Booked Lessons ACROSS ALL PROFESSORS Section */}
-       <Card className="w-full">
-            <CardHeader>
-                <CardTitle>Tutte le Lezioni Prenotate (Globale)</CardTitle>
-                <CardDescription>Elenco di tutte le lezioni prenotate nell'intero sistema, ordinate per data.</CardDescription>
-            </CardHeader>
-            <CardContent>
-               {allBookedLessonsAcrossProfessors.length === 0 ? (
-                    <p className="text-muted-foreground p-4 text-center">Nessuna lezione è attualmente prenotata nel sistema.</p>
-                ) : (
-                   <div className="overflow-x-auto border rounded-md max-h-96">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                              <TableHead className="w-32">Data</TableHead>
-                              <TableHead className="w-24">Ora</TableHead>
-                              <TableHead>Professore</TableHead>
-                              <TableHead>Studente</TableHead>
-                              <TableHead>Ora Prenotazione</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {allBookedLessonsAcrossProfessors.map((slot) => {
-                               // Defensively check if slot or slot.id exists before rendering row
-                               if (!slot || !slot.id) return null;
-                               return (
-                                    <TableRow key={`all-booked-${slot.id}`}>
-                                        <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy')}</TableCell>
-                                        <TableCell>{slot.time}</TableCell>
-                                        <TableCell>{slot.professorEmail}</TableCell>
-                                        <TableCell>{slot.bookedBy}</TableCell>
-                                        <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm') : 'N/A'}</TableCell>
-                                    </TableRow>
-                                );
-                            })}
-                        </TableBody>
-                      </Table>
-                   </div>
-                )}
-            </CardContent>
-       </Card>
-
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Interfaccia Professore</CardTitle>
@@ -572,7 +517,7 @@ export function ProfessorInterface() {
                                              </Button>
                                          </TableCell>
                                      </TableRow>
-                                 );
+                                );
                              })}
                          </TableBody>
                        </Table>
