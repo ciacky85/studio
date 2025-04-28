@@ -17,14 +17,15 @@ import {useToast} from "@/hooks/use-toast";
 import type { UserData } from '@/types/user'; // Assuming UserData type is defined
 import { Separator } from '@/components/ui/separator'; // Import Separator
 import { format, parseISO } from 'date-fns'; // Import date-fns functions
+import {ManageStudentProfessorsDialog} from './manage-student-professors-dialog'; // Import the new dialog
 
-// Define the structure for user display, including assigned professor for students
+// Define the structure for user display, including assigned professors for students
 interface DisplayUser {
   id: number;
   name: string;
   role: string;
   email: string;
-  assignedProfessorEmail?: string | null; // New optional field
+  assignedProfessorEmails?: string[] | null; // Changed field name and type
 }
 
 // Define the structure of a bookable slot (from professor/student perspective)
@@ -52,6 +53,9 @@ export function AdminInterface() {
   const [professors, setProfessors] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<Record<string, string>>({}); // Key: "Day-Time", Value: Professor Email or ""
   const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]); // State for all booked slots
+  const [isManageProfessorsDialogOpen, setIsManageProfessorsDialogOpen] = useState(false);
+  const [selectedStudentForProfessorManagement, setSelectedStudentForProfessorManagement] = useState<DisplayUser | null>(null);
+
 
   const {toast} = useToast();
 
@@ -87,6 +91,7 @@ export function AdminInterface() {
           try {
             const item = localStorage.getItem(key);
             if (item) {
+              // Adjust type expectation for assignedProfessorEmail to be string[]
               const userData: UserData & { password?: string } = JSON.parse(item);
 
               // Check if it looks like a user registration entry
@@ -97,7 +102,8 @@ export function AdminInterface() {
                    name: name,
                    role: userData.role,
                    email: key,
-                   assignedProfessorEmail: userData.assignedProfessorEmail // Load assigned professor
+                   // Ensure assignedProfessorEmails is handled as an array or null
+                   assignedProfessorEmails: Array.isArray(userData.assignedProfessorEmail) ? userData.assignedProfessorEmail : null,
                  };
 
                  if (userData.approved === true) {
@@ -119,7 +125,7 @@ export function AdminInterface() {
       setApprovedUsers(loadedApproved);
       setProfessors(loadedProfessors.sort()); // Sort professors alphabetically
 
-      // Load All Booked Slots
+      // Load All Booked Slots (remains the same)
       const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
       let allProfessorAvailability: Record<string, BookableSlot[]> = {}; // Key: professorEmail
         if (storedAvailability) {
@@ -157,7 +163,7 @@ export function AdminInterface() {
   }, [loadData]);
 
 
-  // Load schedule from local storage on component mount
+  // Load schedule from local storage on component mount (remains the same)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedSchedule = localStorage.getItem(CLASSROOM_SCHEDULE_KEY);
@@ -183,7 +189,7 @@ export function AdminInterface() {
     }
   }, []); // Empty dependency array ensures this runs only on mount
 
-  // Save schedule to local storage whenever it changes
+  // Save schedule to local storage whenever it changes (remains the same)
   useEffect(() => {
      // Only save if schedule is not empty, prevents overwriting on initial load before data is ready
      if (typeof window !== 'undefined' && Object.keys(schedule).length > 0) {
@@ -198,6 +204,10 @@ export function AdminInterface() {
         try {
           let userData: UserData = JSON.parse(userDataString);
           userData.approved = true; // Mark as approved
+          // Initialize assignedProfessorEmails as null or empty array for students upon approval
+          if(userData.role === 'student') {
+             userData.assignedProfessorEmail = userData.assignedProfessorEmail || null; // Keep existing if somehow set, else null
+          }
           localStorage.setItem(email, JSON.stringify(userData)); // Update in localStorage
 
           // Find the user in pending list to move them
@@ -213,8 +223,12 @@ export function AdminInterface() {
           // Update states: remove from pending, add to approved
           setPendingRegistrations(prev => prev.filter((reg) => reg.email !== email));
           if (userToApprove) {
-            // Add the user to approved list (keeping existing assignedProfessorEmail if any, though unlikely for new approval)
-            setApprovedUsers(prev => [...prev, { ...userToApprove, assignedProfessorEmail: userData.assignedProfessorEmail }]);
+             // Add the user to approved list, ensuring assignedProfessorEmails is handled correctly
+             const approvedUserData: DisplayUser = {
+                ...userToApprove,
+                assignedProfessorEmails: userData.assignedProfessorEmail // Pass the potentially updated array/null value
+             };
+            setApprovedUsers(prev => [...prev, approvedUserData]);
             // If the approved user is a professor, update the professor list used for scheduling
             if (userToApprove.role === 'professor') {
               setProfessors(prev => [...prev, email].sort()); // Add and sort
@@ -273,13 +287,12 @@ export function AdminInterface() {
      }
    };
 
-  // Function to generate time slots (HOURLY)
+  // Function to generate time slots (HOURLY) (remains the same)
   function generateTimeSlots() {
     const slots = [];
     for (let hour = 7; hour <= 22; hour++) {
       slots.push(`${String(hour).padStart(2, '0')}:00`);
     }
-    // No need to add 23:00 separately if the loop includes <= 22
     return slots;
   }
 
@@ -298,49 +311,54 @@ export function AdminInterface() {
     });
   };
 
-  // Function to handle assigning a professor to a student
-  const handleAssignProfessor = (studentEmail: string, professorEmail: string | null) => {
-     if (typeof window !== 'undefined') {
-       const studentDataString = localStorage.getItem(studentEmail);
-       if (studentDataString) {
-         try {
-           let studentData: UserData = JSON.parse(studentDataString);
-           // Update assigned professor, use null if 'unassigned' is selected
-           studentData.assignedProfessorEmail = professorEmail === 'unassigned' ? null : professorEmail;
-           localStorage.setItem(studentEmail, JSON.stringify(studentData)); // Save back to localStorage
 
-           // Update the state to reflect the change in the UI
-           setApprovedUsers(prevUsers =>
-             prevUsers.map(user =>
-               user.email === studentEmail
-                 ? { ...user, assignedProfessorEmail: studentData.assignedProfessorEmail }
-                 : user
-             )
-           );
+  // Function called when saving assigned professors from the dialog
+  const handleSaveStudentProfessors = (studentEmail: string, assignedEmails: string[]) => {
+    if (typeof window !== 'undefined') {
+        const studentDataString = localStorage.getItem(studentEmail);
+        if (studentDataString) {
+            try {
+                let studentData: UserData = JSON.parse(studentDataString);
+                studentData.assignedProfessorEmail = assignedEmails.length > 0 ? assignedEmails : null; // Store array or null if empty
+                localStorage.setItem(studentEmail, JSON.stringify(studentData));
 
-           toast({
-             title: "Professore Assegnato",
-             description: professorEmail && professorEmail !== 'unassigned'
-               ? `Professore ${professorEmail} assegnato a ${studentEmail}.`
-               : `Nessun professore assegnato a ${studentEmail}.`,
-           });
+                // Update the state to reflect the change in the UI
+                setApprovedUsers(prevUsers =>
+                    prevUsers.map(user =>
+                        user.email === studentEmail
+                            ? { ...user, assignedProfessorEmails: studentData.assignedProfessorEmail }
+                            : user
+                    )
+                );
 
-         } catch (error) {
-            console.error("Errore durante l'assegnazione del professore:", studentEmail, professorEmail, error);
-            toast({
-              variant: "destructive",
-              title: "Errore Assegnazione",
-              description: `Impossibile assegnare il professore. Errore: ${error instanceof Error ? error.message : String(error)}`,
-            });
-         }
-       } else {
-           toast({ variant: "destructive", title: "Errore", description: "Dati studente non trovati." });
-       }
-     }
-   };
+                toast({
+                    title: "Professori Aggiornati",
+                    description: `Le assegnazioni dei professori per ${studentEmail} sono state aggiornate.`,
+                });
+                setIsManageProfessorsDialogOpen(false); // Close the dialog
+                setSelectedStudentForProfessorManagement(null); // Deselect student
+            } catch (error) {
+                console.error("Errore durante l'aggiornamento dei professori assegnati:", studentEmail, assignedEmails, error);
+                toast({
+                    variant: "destructive",
+                    title: "Errore Aggiornamento",
+                    description: `Impossibile aggiornare i professori assegnati. Errore: ${error instanceof Error ? error.message : String(error)}`,
+                });
+            }
+        } else {
+            toast({ variant: "destructive", title: "Errore", description: "Dati studente non trovati." });
+        }
+    }
+};
+
+const openManageProfessorsDialog = (student: DisplayUser) => {
+    setSelectedStudentForProfessorManagement(student);
+    setIsManageProfessorsDialogOpen(true);
+};
 
 
   return (
+    <>
     <div className="flex flex-col gap-4 p-4 w-full">
       <Card className="w-full">
         <CardHeader>
@@ -464,7 +482,8 @@ export function AdminInterface() {
                                          <TableHead>Nome</TableHead>
                                          <TableHead>Ruolo</TableHead>
                                          <TableHead>Email</TableHead>
-                                         <TableHead>Professore Assegnato</TableHead> {/* New column */}
+                                         <TableHead>Professori Assegnati</TableHead> {/* Changed column header */}
+                                         <TableHead>Azioni</TableHead> {/* New column for actions */}
                                      </TableRow>
                                  </TableHeader>
                                  <TableBody>
@@ -473,28 +492,28 @@ export function AdminInterface() {
                                              <TableCell>{user.name}</TableCell>
                                              <TableCell>{user.role === 'professor' ? 'Professore' : 'Studente'}</TableCell>
                                              <TableCell>{user.email}</TableCell>
-                                             <TableCell> {/* Cell for Professor Assignment */}
-                                                {user.role === 'student' ? (
-                                                    <Select
-                                                        value={user.assignedProfessorEmail || 'unassigned'}
-                                                        onValueChange={(value) => handleAssignProfessor(user.email, value)}
-                                                    >
-                                                        <SelectTrigger className="min-w-[200px] w-auto">
-                                                            <SelectValue placeholder="Assegna Prof." />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="unassigned">Non Assegnato</SelectItem>
-                                                            {professors.map((profEmail) => (
-                                                                <SelectItem key={profEmail} value={profEmail}>
-                                                                    {profEmail}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                ) : (
-                                                    'N/A' // Not applicable for professors
-                                                )}
+                                             <TableCell> {/* Display assigned professors */}
+                                                 {user.role === 'student' ? (
+                                                     (user.assignedProfessorEmails && user.assignedProfessorEmails.length > 0)
+                                                         ? user.assignedProfessorEmails.join(', ')
+                                                         : 'Nessuno'
+                                                 ) : (
+                                                     'N/A' // Not applicable for professors
+                                                 )}
                                              </TableCell>
+                                             <TableCell> {/* Action Button Cell */}
+                                                {user.role === 'student' ? (
+                                                    <Button
+                                                        onClick={() => openManageProfessorsDialog(user)}
+                                                        size="sm"
+                                                        variant="outline"
+                                                    >
+                                                        Gestisci Professori
+                                                    </Button>
+                                                ) : (
+                                                    ' ' // Empty cell for non-students
+                                                )}
+                                            </TableCell>
                                          </TableRow>
                                      ))}
                                  </TableBody>
@@ -506,7 +525,7 @@ export function AdminInterface() {
                  </CardContent>
              </Card>
             </TabsContent>
-            {/* New Bookings Tab Content */}
+            {/* New Bookings Tab Content (remains the same) */}
             <TabsContent value="bookings">
                  <Card>
                      <CardHeader>
@@ -549,5 +568,19 @@ export function AdminInterface() {
         </CardContent>
       </Card>
     </div>
+    {/* Dialog for Managing Student Professors */}
+    {selectedStudentForProfessorManagement && (
+        <ManageStudentProfessorsDialog
+            isOpen={isManageProfessorsDialogOpen}
+            onClose={() => {
+                setIsManageProfessorsDialogOpen(false);
+                setSelectedStudentForProfessorManagement(null);
+            }}
+            student={selectedStudentForProfessorManagement}
+            allProfessors={professors}
+            onSave={handleSaveStudentProfessors}
+        />
+    )}
+    </>
   );
 }

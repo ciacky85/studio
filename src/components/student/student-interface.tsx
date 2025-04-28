@@ -5,7 +5,6 @@ import {useState, useEffect, useCallback} from 'react';
 import {Button} from '@/components/ui/button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
-// import {Calendar} from '@/components/ui/calendar'; // Remove Calendar import
 import {useToast} from "@/hooks/use-toast";
 import { format, isBefore, startOfDay, parseISO, differenceInHours } from 'date-fns'; // Import date-fns functions
 import { it } from 'date-fns/locale'; // Import Italian locale
@@ -29,11 +28,10 @@ const ALL_PROFESSOR_AVAILABILITY_KEY = 'allProfessorAvailability';
 const LOGGED_IN_USER_KEY = 'loggedInUser';
 
 export function StudentInterface() {
-  // const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date()); // Remove selectedDate state
   const [allAvailableSlots, setAllAvailableSlots] = useState<StudentSlotView[]>([]); // State for ALL available slots
   const [bookedSlots, setBookedSlots] = useState<StudentSlotView[]>([]); // Still show all booked slots regardless of date
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
-  const [assignedProfessorEmail, setAssignedProfessorEmail] = useState<string | null>(null); // State for assigned professor
+  const [assignedProfessorEmails, setAssignedProfessorEmails] = useState<string[] | null>(null); // Changed state to handle array
   const {toast} = useToast();
 
    // Function to sort slots consistently by date then time
@@ -51,7 +49,7 @@ export function StudentInterface() {
       });
    };
 
-   // Get current user email and assigned professor on mount
+   // Get current user email and assigned professors on mount
    useEffect(() => {
      if (typeof window !== 'undefined') {
        const storedUser = localStorage.getItem(LOGGED_IN_USER_KEY);
@@ -60,14 +58,15 @@ export function StudentInterface() {
            const userData = JSON.parse(storedUser);
            if (userData.role === 'student') {
               setCurrentUserEmail(userData.username);
-              // Get assigned professor from the student's specific data
+              // Get assigned professors from the student's specific data
               const studentDataString = localStorage.getItem(userData.username);
               if(studentDataString) {
                 const studentData: UserData = JSON.parse(studentDataString);
-                setAssignedProfessorEmail(studentData.assignedProfessorEmail || null);
+                // Ensure assignedProfessorEmail is treated as an array or null
+                setAssignedProfessorEmails(Array.isArray(studentData.assignedProfessorEmail) ? studentData.assignedProfessorEmail : null);
               } else {
                 console.warn("Dati specifici dello studente non trovati per:", userData.username);
-                setAssignedProfessorEmail(null);
+                setAssignedProfessorEmails(null);
               }
            } else {
                console.error("L'utente loggato non è uno studente.");
@@ -85,7 +84,7 @@ export function StudentInterface() {
      }
    }, []);
 
-  // Function to load slots based on assigned professor and all booked slots for the user
+  // Function to load slots based on assigned professors and all booked slots for the user
   const loadSlots = useCallback(() => {
      if (typeof window === 'undefined' || !currentUserEmail) {
          setAllAvailableSlots([]); // Clear all available slots
@@ -112,91 +111,59 @@ export function StudentInterface() {
 
      const loadedAllAvailable: StudentSlotView[] = []; // Changed name
      const loadedBookedByUser: StudentSlotView[] = [];
+     const processedBookedIds = new Set<string>(); // Keep track of booked slots added
 
-     // Get slots only for the assigned professor
-     const professorSlots = assignedProfessorEmail ? allProfessorAvailability[assignedProfessorEmail] || [] : [];
+     // Iterate through ALL professors to find slots available from ASSIGNED professors AND slots booked by the user
+     Object.entries(allProfessorAvailability).forEach(([profEmail, slots]) => {
+         slots.forEach(slot => {
+             // Validate the slot structure read from storage, ensuring duration is 60
+             if (slot && slot.id && slot.date && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail && slot.duration === 60) {
+                const studentViewSlot: StudentSlotView = {
+                    id: slot.id,
+                    date: slot.date,
+                    day: slot.day,
+                    time: slot.time, // Should be like "08:00"
+                    duration: 60, // Always 60 minutes
+                    professorEmail: slot.professorEmail,
+                    isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
+                    bookingTime: slot.bookingTime || null, // Pass booking time
+                };
 
-     // Iterate through the assigned professor's list of slots
-     professorSlots.forEach(slot => {
-         // Validate the slot structure read from storage, ensuring duration is 60
-         if (slot && slot.id && slot.date && slot.day && slot.time && typeof slot.isAvailable === 'boolean' && slot.professorEmail && slot.duration === 60) {
-            const studentViewSlot: StudentSlotView = {
-                id: slot.id,
-                date: slot.date,
-                day: slot.day,
-                time: slot.time, // Should be like "08:00"
-                duration: 60, // Always 60 minutes
-                professorEmail: slot.professorEmail,
-                isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
-                bookingTime: slot.bookingTime || null, // Pass booking time
-            };
-
-             // Add to ALL AVAILABLE list if:
-             // 1. The professor marked it as available
-             // 2. It's not booked by anyone
-             // 3. The slot start time is not in the past
-             // 4. The slot's professor matches the student's assigned professor (already filtered, but double check)
-             if (slot.isAvailable && !slot.bookedBy && slot.professorEmail === assignedProfessorEmail) {
-                 try {
-                    const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`); // Combine date and time for comparison (e.g., 2025-04-28T08:00:00)
-                     if (!isBefore(slotDateTime, new Date())) { // Check if the slot time is in the future
-                          loadedAllAvailable.push(studentViewSlot); // Add to the main available list
-                     }
-                 } catch (parseError) {
-                     console.warn(`Impossibile analizzare data/ora per lo slot ${slot.id}:`, parseError);
-                 }
-             }
-
-             // Add to the user's BOOKED list if booked by them, regardless of date or professor assignment (user should see all their bookings)
-             // Need to iterate through *all* professors' slots for this part
-             if (slot.bookedBy === currentUserEmail) {
-                // Check if this booked slot is already added to avoid duplicates if the booking is with the assigned professor
-                 if (!loadedBookedByUser.some(bookedSlot => bookedSlot.id === studentViewSlot.id)) {
-                     loadedBookedByUser.push(studentViewSlot);
-                 }
-            }
-         } else if (slot && slot.duration !== 60) {
-             // Optionally log if we find slots with incorrect duration, might indicate old data
-             // console.warn(`Ignorato slot con durata errata (${slot.duration} min):`, slot);
-         } else {
-              // Log if data structure is unexpected or incomplete
-              // console.warn(`Struttura slot non valida o incompleta trovata:`, slot);
-         }
-     });
-
-     // If the student is not assigned to a specific professor, they might still have bookings with other professors.
-     // So, we need one more pass through all slots to ensure all bookings are captured.
-     if (assignedProfessorEmail) {
-         Object.entries(allProfessorAvailability).forEach(([profEmail, slots]) => {
-             if (profEmail !== assignedProfessorEmail) { // Only check professors *not* the assigned one
-                 slots.forEach(slot => {
-                    if (slot && slot.bookedBy === currentUserEmail && slot.duration === 60) {
-                         // Check if this booked slot is already in the list
-                         if (!loadedBookedByUser.some(bookedSlot => bookedSlot.id === slot.id)) {
-                             loadedBookedByUser.push({
-                                 id: slot.id,
-                                 date: slot.date,
-                                 day: slot.day,
-                                 time: slot.time,
-                                 duration: 60,
-                                 professorEmail: slot.professorEmail,
-                                 isBookedByCurrentUser: true,
-                                 bookingTime: slot.bookingTime || null,
-                             });
+                 // Add to ALL AVAILABLE list if:
+                 // 1. The professor marked it as available
+                 // 2. It's not booked by anyone
+                 // 3. The slot start time is not in the past
+                 // 4. The slot's professor is one of the student's assigned professors
+                 if (slot.isAvailable && !slot.bookedBy && assignedProfessorEmails && assignedProfessorEmails.includes(slot.professorEmail)) {
+                     try {
+                        const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`); // Combine date and time for comparison (e.g., 2025-04-28T08:00:00)
+                         if (!isBefore(slotDateTime, new Date())) { // Check if the slot time is in the future
+                              loadedAllAvailable.push(studentViewSlot); // Add to the main available list
                          }
-                    }
-                 });
+                     } catch (parseError) {
+                         console.warn(`Impossibile analizzare data/ora per lo slot ${slot.id}:`, parseError);
+                     }
+                 }
+
+                 // Add to the user's BOOKED list if booked by them (regardless of professor assignment) and not already added
+                 if (slot.bookedBy === currentUserEmail && !processedBookedIds.has(studentViewSlot.id)) {
+                    loadedBookedByUser.push(studentViewSlot);
+                    processedBookedIds.add(studentViewSlot.id);
+                }
+             } else if (slot && slot.duration !== 60) {
+                 // Optionally log if we find slots with incorrect duration
+             } else {
+                  // Log if data structure is unexpected or incomplete
              }
          });
-     }
-
+     });
 
       // Sort all available slots by date and then time
       setAllAvailableSlots(sortSlots(loadedAllAvailable));
       // Sort all booked slots for the user by date and then time
       setBookedSlots(sortSlots(loadedBookedByUser));
 
-  }, [currentUserEmail, assignedProfessorEmail]); // Rerun when user or assigned professor changes
+  }, [currentUserEmail, assignedProfessorEmails]); // Rerun when user or assigned professors change
 
   // Load slots on mount and when dependencies change
   useEffect(() => {
@@ -207,9 +174,9 @@ export function StudentInterface() {
   // Function to book a slot
   const bookSlot = useCallback((slotToBook: StudentSlotView) => {
     if (typeof window !== 'undefined' && currentUserEmail) {
-        // Double-check if the student has an assigned professor and if the slot matches
-        if (!assignedProfessorEmail || slotToBook.professorEmail !== assignedProfessorEmail) {
-             toast({ variant: "destructive", title: "Prenotazione Fallita", description: "Puoi prenotare solo slot del professore a te assegnato." });
+        // Check if the slot's professor is in the student's assigned list
+        if (!assignedProfessorEmails || !assignedProfessorEmails.includes(slotToBook.professorEmail)) {
+             toast({ variant: "destructive", title: "Prenotazione Fallita", description: "Puoi prenotare solo slot di professori a te assegnati." });
              loadSlots(); // Refresh list
              return;
         }
@@ -279,18 +246,8 @@ export function StudentInterface() {
 
         toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata per il ${format(parseISO(slotToBook.date), 'dd/MM/yyyy')} alle ${slotToBook.time}.` });
 
-        // Potential Email Confirmation (implement sendEmail service if needed)
-        // try {
-        //   await sendEmail({ to: currentUserEmail, subject: 'Conferma Prenotazione', html: `...` });
-        //   await sendEmail({ to: slotToBook.professorEmail, subject: 'Notifica Nuova Prenotazione', html: `...` });
-        // } catch (emailError) {
-        //   console.error("Impossibile inviare email di conferma prenotazione:", emailError);
-        //   // Optionally inform user, but booking itself succeeded
-        //   toast({ variant: "destructive", title: "Errore Email", description: "Prenotazione confermata, ma impossibile inviare email di conferma." });
-        // }
-
     }
-  }, [currentUserEmail, assignedProfessorEmail, loadSlots, toast]); // Include assignedProfessorEmail, loadSlots and toast
+  }, [currentUserEmail, assignedProfessorEmails, loadSlots, toast]); // Include assignedProfessorEmails, loadSlots and toast
 
   // Function to cancel a booking
   const cancelBooking = useCallback((slotToCancel: StudentSlotView) => {
@@ -373,13 +330,6 @@ export function StudentInterface() {
 
            toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} il ${format(parseISO(slotToCancel.date), 'dd/MM/yyyy')} alle ${slotToCancel.time} è stata cancellata.` });
 
-            // Potential Cancellation Email Notifications
-            // try {
-            //    await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Prenotazione', html: `...` });
-            //    await sendEmail({ to: slotToCancel.professorEmail, subject: 'Prenotazione Cancellata dallo Studente', html: `...` });
-            // } catch (emailError) {
-            //      console.error("Impossibile inviare email di cancellazione:", emailError);
-            // }
        }
    }, [currentUserEmail, loadSlots, toast]); // Include loadSlots and toast
 
@@ -389,13 +339,13 @@ export function StudentInterface() {
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Interfaccia Studente</CardTitle>
-          {assignedProfessorEmail ? (
+          {(assignedProfessorEmails && assignedProfessorEmails.length > 0) ? (
              <CardDescription>
-                Visualizza e prenota slot di lezione disponibili da 60 minuti con il tuo professore assegnato ({assignedProfessorEmail}) o gestisci le tue prenotazioni.
+                Visualizza e prenota slot di lezione disponibili da 60 minuti con i tuoi professori assegnati ({assignedProfessorEmails.join(', ')}) o gestisci le tue prenotazioni.
              </CardDescription>
           ) : (
               <CardDescription>
-                  Non ti è stato ancora assegnato un professore. Contatta l'amministratore. Puoi comunque vedere le tue prenotazioni esistenti.
+                  Non ti è stato ancora assegnato nessun professore. Contatta l'amministratore. Puoi comunque vedere le tue prenotazioni esistenti.
              </CardDescription>
           )}
         </CardHeader>
@@ -404,12 +354,12 @@ export function StudentInterface() {
            {/* Available Slots */}
            <div>
              <h3 className="text-lg font-semibold mb-3">
-                Slot Disponibili per la Prenotazione {assignedProfessorEmail ? `con ${assignedProfessorEmail}` : ''}
+                Slot Disponibili per la Prenotazione {assignedProfessorEmails ? `con i tuoi professori` : ''}
              </h3>
-             {assignedProfessorEmail ? (
+             {(assignedProfessorEmails && assignedProfessorEmails.length > 0) ? (
                  allAvailableSlots.length === 0 ? (
                      <p className="text-muted-foreground p-4 text-center">
-                         Nessuno slot da 60 minuti attualmente disponibile per la prenotazione con il tuo professore.
+                         Nessuno slot da 60 minuti attualmente disponibile per la prenotazione con i tuoi professori.
                      </p>
                  ) : (
                       <div className="overflow-x-auto border rounded-md max-h-96"> {/* Max height and scroll */}
@@ -441,7 +391,7 @@ export function StudentInterface() {
                  )
              ) : (
                  <p className="text-muted-foreground p-4 text-center">
-                    Assegna un professore per vedere gli slot disponibili.
+                    Nessun professore assegnato. Impossibile visualizzare slot disponibili.
                  </p>
              )}
            </div>
