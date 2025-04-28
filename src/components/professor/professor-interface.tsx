@@ -93,8 +93,10 @@ export function ProfessorInterface() {
     let classroomSchedule: Record<string, string> = {}; // Key: "Day-HH:00", Value: Professor Email
     if (storedSchedule) {
       try {
-        classroomSchedule = JSON.parse(storedSchedule);
-         if (typeof classroomSchedule !== 'object' || classroomSchedule === null) {
+        const parsedSchedule = JSON.parse(storedSchedule);
+         if (typeof parsedSchedule === 'object' && parsedSchedule !== null) {
+            classroomSchedule = parsedSchedule;
+         } else {
             console.warn("Invalid classroom schedule format found in localStorage.");
             classroomSchedule = {}; // Reset if invalid
          }
@@ -109,10 +111,12 @@ export function ProfessorInterface() {
     let allProfessorAvailability: Record<string, BookableSlot[]> = {}; // Key: professorEmail
     if (storedAvailability) {
       try {
-        allProfessorAvailability = JSON.parse(storedAvailability);
-         if (typeof allProfessorAvailability !== 'object' || allProfessorAvailability === null) {
-             console.warn("Invalid allProfessorAvailability format found in localStorage.");
-             allProfessorAvailability = {}; // Reset if invalid
+        const parsedAvailability = JSON.parse(storedAvailability);
+         if (typeof parsedAvailability === 'object' && parsedAvailability !== null) {
+             allProfessorAvailability = parsedAvailability; // Reset if invalid
+         } else {
+              console.warn("Invalid allProfessorAvailability format found in localStorage.");
+              allProfessorAvailability = {}; // Reset if invalid
          }
       } catch (e) {
         console.error("Failed to parse allProfessorAvailability", e);
@@ -120,30 +124,30 @@ export function ProfessorInterface() {
       }
     }
 
+    // Get the current professor's full list of slots from the loaded data
+    const professorSlots = allProfessorAvailability[currentUserEmail] || [];
+
     // 3. Filter and sort all booked slots for the current professor
-    const bookedForCurrentUser = (allProfessorAvailability[currentUserEmail] || [])
+    const bookedForCurrentUser = professorSlots
       .filter(slot => slot && slot.bookedBy && slot.duration === 60); // Ensure duration is 60
-    setAllBookedSlots(sortSlots(bookedForCurrentUser)); // Set sorted booked slots
+    setAllBookedSlots(sortSlots([...bookedForCurrentUser])); // Set sorted booked slots (use spread to avoid mutating original)
 
     // 4. Process slots for the *selected date* (if a date is selected)
     if (!selectedDate) {
         setDailySlots([]);
         return; // No date selected, nothing to show in daily view
     }
-    // Ensure selected date is not in the past for generating slots
-    if (isBefore(selectedDate, startOfDay(new Date()))) {
-       // Don't generate slots for past dates, maybe show message?
-       setDailySlots([]);
-       return;
-    }
 
     const formattedDate = format(selectedDate, 'yyyy-MM-dd');
     const dayIndex = getDay(selectedDate); // 0 for Sunday, 1 for Monday, etc.
     const dayOfWeekString = daysOfWeek[dayIndex];
 
+     // Check if selected date is in the past for slot generation/display
+     const isPastDate = isBefore(selectedDate, startOfDay(new Date()));
+
     // 5. Get existing slots specific to the current professor and selected date for quick lookup
     const professorExistingSlotsMap = new Map<string, BookableSlot>(
-      (allProfessorAvailability[currentUserEmail] || [])
+      professorSlots
         .filter(slot => slot && slot.date === formattedDate && slot.duration === 60) // Added check for slot existence and 60 min duration
         .map(slot => [slot.id, slot])
     );
@@ -162,18 +166,21 @@ export function ProfessorInterface() {
         // Retrieve existing saved data (isAvailable, bookedBy) for this specific slot ID if it exists
         const existingSlotData = professorExistingSlotsMap.get(slotId);
 
-        // Create the slot object, defaulting availability to false if never saved before
-        generatedSlots.push({
-          id: slotId,
-          date: formattedDate,
-          day: dayOfWeekString,
-          time: hourTime, // Use the hourly time directly (e.g., "08:00")
-          duration: 60,   // Duration is always 60 minutes
-          isAvailable: existingSlotData?.isAvailable ?? false, // Use saved status or default to false
-          bookedBy: existingSlotData?.bookedBy ?? null,
-          bookingTime: existingSlotData?.bookingTime ?? null,
-          professorEmail: currentUserEmail,
-        });
+        // Only generate slots for the future (or today)
+        if (!isPastDate) {
+            // Create the slot object, defaulting availability to false if never saved before
+            generatedSlots.push({
+              id: slotId,
+              date: formattedDate,
+              day: dayOfWeekString,
+              time: hourTime, // Use the hourly time directly (e.g., "08:00")
+              duration: 60,   // Duration is always 60 minutes
+              isAvailable: existingSlotData?.isAvailable ?? false, // Use saved status or default to false
+              bookedBy: existingSlotData?.bookedBy ?? null,
+              bookingTime: existingSlotData?.bookingTime ?? null,
+              professorEmail: currentUserEmail,
+            });
+        }
       }
     });
 
@@ -196,21 +203,18 @@ export function ProfessorInterface() {
   }, [loadAndGenerateSlots]);
 
    // Save function (centralized) - ensures data for other dates/professors isn't lost
-   const saveProfessorAvailability = useCallback((updatedSlotsForSelectedDate?: BookableSlot[]) => {
+   const saveProfessorAvailability = useCallback((updatedSlots?: BookableSlot[]) => {
         if (typeof window !== 'undefined' && currentUserEmail) {
-            // Use selectedDate from state if updatedSlotsForSelectedDate is provided (meaning daily view changed)
-            const currentFormattedDate = updatedSlotsForSelectedDate && selectedDate
-                ? format(selectedDate, 'yyyy-MM-dd')
-                : null;
-
             // 1. Load the entire availability object
             const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
             let allProfessorAvailability: Record<string, BookableSlot[]> = {};
             if (storedAvailability) {
                 try {
-                    allProfessorAvailability = JSON.parse(storedAvailability);
-                     if (typeof allProfessorAvailability !== 'object' || allProfessorAvailability === null) {
-                         allProfessorAvailability = {}; // Reset if invalid
+                    const parsedAvailability = JSON.parse(storedAvailability);
+                     if (typeof parsedAvailability === 'object' && parsedAvailability !== null) {
+                         allProfessorAvailability = parsedAvailability; // Reset if invalid
+                     } else {
+                        allProfessorAvailability = {};
                      }
                 } catch (e) {
                     console.error("Failed to parse allProfessorAvailability before saving", e);
@@ -218,35 +222,44 @@ export function ProfessorInterface() {
                 }
             }
 
-            // 2. Get existing slots for the current professor
-            let currentProfessorSlots = allProfessorAvailability[currentUserEmail] || [];
+            // 2. If specific updated slots are provided (e.g., from daily view toggle or cancellation),
+            //    merge them into the existing professor slots. Otherwise, assume the caller
+            //    has already modified the full list (less common now).
+            if (updatedSlots) {
+                let currentProfessorSlots = allProfessorAvailability[currentUserEmail] || [];
+                const updatedSlotMap = new Map(updatedSlots.map(slot => [slot.id, slot]));
 
-            // 3. If saving changes from the daily view, update those specific slots
-            if (updatedSlotsForSelectedDate && currentFormattedDate) {
-                const updatedSlotMap = new Map(updatedSlotsForSelectedDate.map(slot => [slot.id, slot]));
-                // Filter out the old versions of the slots for the selected date and add the updated ones
-                currentProfessorSlots = currentProfessorSlots
-                    .filter(slot => !(slot && slot.date === currentFormattedDate && slot.duration === 60)) // Remove old slots for this date & duration
-                    .concat(updatedSlotsForSelectedDate); // Add the new/updated slots for this date
+                // Create a new list by replacing or adding updated slots
+                 const newProfessorSlots: BookableSlot[] = [];
+                 const processedIds = new Set<string>();
+
+                 // Add all updated slots first
+                 updatedSlots.forEach(slot => {
+                     newProfessorSlots.push(slot);
+                     processedIds.add(slot.id);
+                 });
+
+                 // Add existing slots that were NOT updated
+                 currentProfessorSlots.forEach(slot => {
+                    if (slot && !processedIds.has(slot.id)) {
+                        newProfessorSlots.push(slot);
+                    }
+                 });
+
+                 // Filter out any potential null/undefined slots and ensure duration is 60
+                 const validatedSlots = newProfessorSlots.filter(slot => slot && slot.date && slot.time && slot.duration === 60);
+
+                 // Sort the combined list
+                 allProfessorAvailability[currentUserEmail] = sortSlots(validatedSlots);
+
             }
-            // If updatedSlotsForSelectedDate is not provided, it means we are saving a change
-            // made from the "All Booked Lessons" list (e.g., cancellation),
-            // and the data in allProfessorAvailability is assumed to be already modified
-            // before calling this function (inside cancelBooking), so we just need to save it.
+            // If no updatedSlots provided, we just save the current state of allProfessorAvailability
+            // This path might be less used now as updates should provide the modified slots.
 
-            // Ensure all slots in the list are valid before proceeding
-            const validatedSlots = currentProfessorSlots.filter(slot => slot && slot.date && slot.time);
-
-            // 4. Sort combined slots before saving
-            const combinedSlots = sortSlots(validatedSlots);
-
-            // 5. Update the entry for the current professor
-            allProfessorAvailability[currentUserEmail] = combinedSlots;
-
-            // 6. Save the entire modified availability object back to localStorage
+            // 3. Save the entire modified availability object back to localStorage
             localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
         }
-   }, [currentUserEmail, selectedDate]);
+   }, [currentUserEmail]);
 
 
   const toggleSlotAvailability = (id: string) => {
@@ -267,20 +280,23 @@ export function ProfessorInterface() {
        return;
     }
 
-    // Create the updated list for the current day
+    // Create the updated slot object
+    const updatedSlot = { ...slotToToggle, isAvailable: !slotToToggle.isAvailable };
+
+    // Create the updated list for the current day by replacing the toggled slot
     const updatedDailySlots = dailySlots.map((slot) =>
-      slot.id === id ? { ...slot, isAvailable: !slot.isAvailable } : slot
+      slot.id === id ? updatedSlot : slot
     );
 
     // Update the UI state immediately
     setDailySlots(updatedDailySlots);
 
-    // Persist the change using the centralized save function
-    saveProfessorAvailability(updatedDailySlots);
+    // Persist the change using the centralized save function, passing only the updated slot
+    saveProfessorAvailability([updatedSlot]); // Pass only the modified slot
 
     toast({
-        title: slotToToggle.isAvailable ? "Slot Made Unavailable" : "Slot Made Available",
-        description: `Slot at ${slotToToggle.time} on ${format(selectedDate, 'PPP')} is now ${slotToToggle.isAvailable ? 'unavailable' : 'available for booking'}.` // Updated message
+        title: updatedSlot.isAvailable ? "Slot Made Available" : "Slot Made Unavailable",
+        description: `Slot at ${slotToToggle.time} on ${format(selectedDate, 'PPP')} is now ${updatedSlot.isAvailable ? 'available for booking' : 'unavailable'}.` // Updated message
     })
   };
 
@@ -291,8 +307,10 @@ export function ProfessorInterface() {
         const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
         let allProfessorAvailability: Record<string, BookableSlot[]> = {};
          try {
-             allProfessorAvailability = storedAvailability ? JSON.parse(storedAvailability) : {};
-             if (typeof allProfessorAvailability !== 'object' || allProfessorAvailability === null) {
+             const parsedAvailability = storedAvailability ? JSON.parse(storedAvailability) : {};
+             if (typeof parsedAvailability === 'object' && parsedAvailability !== null) {
+                 allProfessorAvailability = parsedAvailability;
+             } else {
                  allProfessorAvailability = {};
              }
          } catch (e) {
@@ -325,18 +343,24 @@ export function ProfessorInterface() {
         }
 
         // 3. Update the slot data: remove booking info, set isAvailable to false (professor needs to explicitly make it available again)
-        slotToCancel.bookedBy = null;
-        slotToCancel.bookingTime = null;
-        slotToCancel.isAvailable = false; // IMPORTANT: Set to false. Professor must explicitly make available again.
+        const updatedSlot = {
+            ...slotToCancel,
+            bookedBy: null,
+            bookingTime: null,
+            isAvailable: false, // IMPORTANT: Set to false. Professor must explicitly make available again.
+        };
 
-        // 4. Update the professor's slot list in the main object
-        allProfessorAvailability[currentUserEmail] = professorSlots;
 
-        // 5. Save updated data back to localStorage (using the save function WITHOUT daily updates parameter)
-        saveProfessorAvailability(); // This now just saves the modified allProfessorAvailability object
+        // Replace the old slot with the updated one in the professor's list
+        const updatedProfessorSlots = professorSlots.map(slot => slot.id === slotId ? updatedSlot : slot);
+        allProfessorAvailability[currentUserEmail] = updatedProfessorSlots;
+
+
+        // 5. Save updated data back to localStorage using the CENTRALIZED save function
+        saveProfessorAvailability(updatedProfessorSlots); // Pass the full updated list for this professor
 
         // 6. Update UI state immediately by reloading slots (both daily and booked)
-        loadAndGenerateSlots(); // This re-reads from localStorage and updates both UI lists
+        loadAndGenerateSlots(); // This re-reads from the updated localStorage
 
         toast({ title: "Booking Cancelled", description: `Booking for ${studentEmail} on ${format(parseISO(slotToCancel.date), 'PPP')} at ${slotToCancel.time} cancelled. Slot is now unavailable.` });
 
@@ -348,6 +372,7 @@ export function ProfessorInterface() {
         // }
     }
   }, [currentUserEmail, loadAndGenerateSlots, saveProfessorAvailability, toast]); // Dependencies
+
 
   return (
     <div className="flex flex-col gap-6 p-4 w-full"> {/* Increased gap */}
@@ -376,7 +401,7 @@ export function ProfessorInterface() {
             </h3>
              {dailySlots.length === 0 ? (
                  <p className="text-muted-foreground p-4 text-center">
-                    {selectedDate ? (isBefore(selectedDate, startOfDay(new Date())) ? "Cannot manage slots for past dates." : `No 60-minute time slots assigned by admin for you on ${daysOfWeek[getDay(selectedDate)]}s.`) : 'Select a date to view slots.'}
+                    {selectedDate ? (isBefore(selectedDate, startOfDay(new Date())) ? "Cannot manage slots for past dates." : `No 60-minute time slots assigned by admin for you on ${daysOfWeek[getDay(selectedDate)]}.`) : 'Select a date to view slots.'}
                  </p>
              ) : (
                  <div className="overflow-x-auto border rounded-md max-h-96"> {/* Add max-height and scroll */}
@@ -467,24 +492,28 @@ export function ProfessorInterface() {
                            </TableRow>
                          </TableHeader>
                          <TableBody>
-                             {allBookedSlots.map((slot) => (
-                                 <TableRow key={`booked-all-${slot.id}`}>
-                                     <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
-                                     <TableCell>{slot.time}</TableCell>
-                                     <TableCell className="text-center">{slot.duration} min</TableCell>
-                                     <TableCell>{slot.bookedBy}</TableCell>
-                                     <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'Pp') : 'N/A'}</TableCell>
-                                     <TableCell className="text-center">
-                                         <Button
-                                             onClick={() => cancelBooking(slot.id)}
-                                             variant="destructive"
-                                             size="sm"
-                                         >
-                                             Cancel Booking
-                                         </Button>
-                                     </TableCell>
-                                 </TableRow>
-                             ))}
+                             {allBookedSlots.map((slot) => {
+                                // Defensively check if slot or slot.id exists before rendering row
+                                if (!slot || !slot.id) return null;
+                                return (
+                                     <TableRow key={`booked-all-${slot.id}`}>
+                                         <TableCell>{format(parseISO(slot.date), 'PPP')}</TableCell>
+                                         <TableCell>{slot.time}</TableCell>
+                                         <TableCell className="text-center">{slot.duration} min</TableCell>
+                                         <TableCell>{slot.bookedBy}</TableCell>
+                                         <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'Pp') : 'N/A'}</TableCell>
+                                         <TableCell className="text-center">
+                                             <Button
+                                                 onClick={() => cancelBooking(slot.id)}
+                                                 variant="destructive"
+                                                 size="sm"
+                                             >
+                                                 Cancel Booking
+                                             </Button>
+                                         </TableCell>
+                                     </TableRow>
+                                 );
+                             })}
                          </TableBody>
                        </Table>
                     </div>
