@@ -61,13 +61,14 @@ const LOGGED_IN_USER_KEY = 'loggedInUser';
 const daysOfWeek = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato']; // Match getDay() output in Italian
 
 export function ProfessorInterface() {
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date()); // Default to today
+  const [selectedAvailabilityDate, setSelectedAvailabilityDate] = useState<Date | undefined>(new Date()); // Date for managing OWN slots
   const [dailySlots, setDailySlots] = useState<BookableSlot[]>([]); // Slots this professor OFFERS for the selected date
   const [professorBookedSlots, setProfessorBookedSlots] = useState<BookableSlot[]>([]); // Slots THIS professor HAS BEEN BOOKED FOR
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [assignedProfessorEmails, setAssignedProfessorEmails] = useState<string[] | null>(null); // Professors this user can book FROM
-  const [availableSlotsToBook, setAvailableSlotsToBook] = useState<ProfessorBookingViewSlot[]>([]); // Slots available for THIS professor TO BOOK
+  const [allAvailableSlotsToBook, setAllAvailableSlotsToBook] = useState<ProfessorBookingViewSlot[]>([]); // ALL slots available for THIS professor TO BOOK
   const [myBookedLessons, setMyBookedLessons] = useState<ProfessorBookingViewSlot[]>([]); // Lessons THIS professor booked WITH OTHERS
+  const [selectedBookingDate, setSelectedBookingDate] = useState<Date | undefined>(new Date()); // Date for BOOKING slots from others
 
 
   const {toast} = useToast();
@@ -147,15 +148,15 @@ export function ProfessorInterface() {
 
 
     // 4. Process slots for the *selected date* to manage availability
-    if (!selectedDate) {
+    if (!selectedAvailabilityDate) {
         setDailySlots([]);
         return; // No date selected, nothing to show in daily management view
     }
 
-    const formattedDate = format(selectedDate, 'yyyy-MM-dd');
-    const dayIndex = getDay(selectedDate);
+    const formattedDate = format(selectedAvailabilityDate, 'yyyy-MM-dd');
+    const dayIndex = getDay(selectedAvailabilityDate);
     const dayOfWeekString = daysOfWeek[dayIndex];
-    const isPastDate = isBefore(selectedDate, startOfDay(new Date()));
+    const isPastDate = isBefore(selectedAvailabilityDate, startOfDay(new Date()));
 
     // 5. Get existing slots specific to the current professor and selected date for lookup
     const professorExistingSlotsMap = new Map<string, BookableSlot>(
@@ -171,10 +172,10 @@ export function ProfessorInterface() {
       const parts = scheduleKey.split('-');
       if (parts.length < 3) return; // Invalid key format
       const day = parts[0];
-      const hourTime = parts[1];
+      const hourTime = parts[1]; // Expecting 'HH:00'
       const classroom = parts.slice(2).join('-'); // Handle potential hyphens in classroom names
 
-      if (day === dayOfWeekString && assignment.professor === currentUserEmail && hourTime.endsWith(':00')) {
+      if (day === dayOfWeekString && assignment.professor === currentUserEmail && hourTime && hourTime.endsWith(':00')) {
         const slotId = `${formattedDate}-${hourTime}-${classroom}-${currentUserEmail}`; // Unique ID including date, time, classroom, professor
         const existingSlotData = professorExistingSlotsMap.get(slotId);
 
@@ -199,12 +200,12 @@ export function ProfessorInterface() {
     });
     setDailySlots(sortedGeneratedSlots);
 
-  }, [selectedDate, currentUserEmail]); // Rerun when date or user changes
+  }, [selectedAvailabilityDate, currentUserEmail]); // Rerun when date or user changes
 
    // Load slots available FOR BOOKING by this professor
    const loadSlotsToBook = useCallback(() => {
        if (typeof window === 'undefined' || !currentUserEmail || !assignedProfessorEmails) {
-           setAvailableSlotsToBook([]);
+           setAllAvailableSlotsToBook([]); // Reset ALL available slots
            setMyBookedLessons([]);
            return;
        }
@@ -213,7 +214,7 @@ export function ProfessorInterface() {
        let allProfessorAvailability: Record<string, BookableSlot[]> = {};
        if (storedAvailability) { try { allProfessorAvailability = JSON.parse(storedAvailability); } catch (e) { console.error("Impossibile analizzare allProfessorAvailability", e); allProfessorAvailability = {}; } }
 
-       const loadedAvailableToBook: ProfessorBookingViewSlot[] = [];
+       const loadedAllAvailableToBook: ProfessorBookingViewSlot[] = []; // Store ALL available slots here first
        const loadedMyBookings: ProfessorBookingViewSlot[] = [];
        const processedBookedIds = new Set<string>();
 
@@ -231,12 +232,12 @@ export function ProfessorInterface() {
                            bookingTime: slot.bookingTime || null,
                        };
 
-                       // Add to AVAILABLE TO BOOK list
+                       // Add to AVAILABLE TO BOOK list (all of them initially)
                        if (slot.isAvailable && !slot.bookedBy) {
                            try {
                                const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`);
-                               if (!isBefore(slotDateTime, new Date())) {
-                                   loadedAvailableToBook.push(bookingViewSlot);
+                               if (!isBefore(slotDateTime, startOfDay(new Date()))) { // Filter past slots
+                                   loadedAllAvailableToBook.push(bookingViewSlot);
                                }
                            } catch (parseError) { console.warn(`Impossibile analizzare data/ora per lo slot ${slot.id}:`, parseError); }
                        }
@@ -261,7 +262,7 @@ export function ProfessorInterface() {
             }
        });
 
-       setAvailableSlotsToBook(sortSlotsByDateAndTime(loadedAvailableToBook));
+       setAllAvailableSlotsToBook(sortSlotsByDateAndTime(loadedAllAvailableToBook)); // Store ALL available, filtering happens in render
        setMyBookedLessons(sortSlotsByDateAndTime(loadedMyBookings));
 
    }, [currentUserEmail, assignedProfessorEmails]);
@@ -279,13 +280,13 @@ export function ProfessorInterface() {
 
    // Save function (centralized for OWN availability) - ensures data for other dates/professors isn't lost
    const saveOwnAvailability = useCallback((updatedSlotsForDay: BookableSlot[]) => {
-        if (typeof window !== 'undefined' && currentUserEmail && selectedDate) {
+        if (typeof window !== 'undefined' && currentUserEmail && selectedAvailabilityDate) {
              const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
              let allProfessorAvailability: Record<string, BookableSlot[]> = {};
              if (storedAvailability) { try { allProfessorAvailability = JSON.parse(storedAvailability); } catch (e) { console.error("Impossibile analizzare allProfessorAvailability prima del salvataggio", e); allProfessorAvailability = {}; }}
 
              let currentProfessorSlots = allProfessorAvailability[currentUserEmail] || [];
-             const formattedSelectedDate = format(selectedDate, 'yyyy-MM-dd');
+             const formattedSelectedDate = format(selectedAvailabilityDate, 'yyyy-MM-dd');
 
              // Create a map of the updated slots for the current day for quick lookup
              // Filter out invalid slot data before creating the map
@@ -304,18 +305,18 @@ export function ProfessorInterface() {
              allProfessorAvailability[currentUserEmail] = sortSlotsByDateAndTime(validatedSlots);
              localStorage.setItem(ALL_PROFESSOR_AVAILABILITY_KEY, JSON.stringify(allProfessorAvailability));
         }
-   }, [currentUserEmail, selectedDate]); // Depends on currentUserEmail and selectedDate
+   }, [currentUserEmail, selectedAvailabilityDate]); // Depends on currentUserEmail and selectedAvailabilityDate
 
 
   const toggleSlotAvailability = (id: string) => {
     const slotToToggle = dailySlots.find(slot => slot.id === id);
-    if (!slotToToggle || !selectedDate) { console.error("Slot non trovato o data non selezionata:", id); return; }
+    if (!slotToToggle || !selectedAvailabilityDate) { console.error("Slot non trovato o data non selezionata:", id); return; }
     if (slotToToggle.bookedBy) {
        toast({ variant: "destructive", title: "Azione Negata", description: "Impossibile cambiare la disponibilità di uno slot prenotato." });
        return;
     }
      // Prevent changing availability for past dates
-     if (isBefore(selectedDate, startOfDay(new Date()))) {
+     if (isBefore(selectedAvailabilityDate, startOfDay(new Date()))) {
           toast({ variant: "destructive", title: "Azione Negata", description: "Impossibile cambiare la disponibilità per date passate." });
           return;
      }
@@ -327,7 +328,7 @@ export function ProfessorInterface() {
     // Persist the change using the save function for OWN availability
     saveOwnAvailability(updatedDailySlots); // Pass all slots for the current day to ensure correct merging
 
-    toast({ title: updatedSlot.isAvailable ? "Slot Reso Disponibile" : "Slot Reso Non Disponibile", description: `Slot alle ${slotToToggle.time} in ${slotToToggle.classroom} del ${format(selectedDate, 'dd/MM/yyyy', { locale: it })} è ora ${updatedSlot.isAvailable ? 'disponibile' : 'non disponibile'}.` });
+    toast({ title: updatedSlot.isAvailable ? "Slot Reso Disponibile" : "Slot Reso Non Disponibile", description: `Slot alle ${slotToToggle.time} in ${slotToToggle.classroom} del ${format(selectedAvailabilityDate, 'dd/MM/yyyy', { locale: it })} è ora ${updatedSlot.isAvailable ? 'disponibile' : 'non disponibile'}.` });
   };
 
   // Function to cancel a booking MADE BY OTHERS for THIS professor's slots
@@ -514,7 +515,7 @@ export function ProfessorInterface() {
             }
 
            // Refresh the lists related to booking lessons
-           loadSlotsToBook(); // Reloads availableSlotsToBook and myBookedLessons
+           loadSlotsToBook(); // Reloads allAvailableSlotsToBook and myBookedLessons
 
            toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata per il ${formattedDate} alle ${formattedTime} in ${classroomInfo}.` });
        }
@@ -617,11 +618,16 @@ export function ProfessorInterface() {
 
 
            // Refresh the lists related to booking lessons
-           loadSlotsToBook(); // Reloads availableSlotsToBook and myBookedLessons
+           loadSlotsToBook(); // Reloads allAvailableSlotsToBook and myBookedLessons
 
            toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} il ${formattedDate} alle ${formattedTime} in ${classroomInfo} è stata cancellata.` });
        }
    }, [currentUserEmail, loadSlotsToBook, toast]);
+
+   // Filter available slots based on the selected booking date
+    const filteredAvailableSlotsToBook = selectedBookingDate
+      ? allAvailableSlotsToBook.filter(slot => slot.date === format(selectedBookingDate, 'yyyy-MM-dd'))
+      : [];
 
 
   return (
@@ -642,18 +648,18 @@ export function ProfessorInterface() {
                     <CardContent className="grid gap-6 md:grid-cols-2">
                         <div className="flex justify-center">
                             <Calendar
-                                locale={it} mode="single" selected={selectedDate} onSelect={setSelectedDate}
+                                locale={it} mode="single" selected={selectedAvailabilityDate} onSelect={setSelectedAvailabilityDate}
                                 className="rounded-md border"
                                 disabled={(date) => isBefore(date, startOfDay(new Date())) && !professorBookedSlots.some(slot => slot.date === format(date, 'yyyy-MM-dd'))} // Disable past dates unless booked
                             />
                         </div>
                         <div>
                             <h3 className="text-lg font-semibold mb-3">
-                              Gestisci Slot per {selectedDate ? format(selectedDate, 'dd/MM/yyyy', { locale: it }) : 'Nessuna data selezionata'}
+                              Gestisci Slot per {selectedAvailabilityDate ? format(selectedAvailabilityDate, 'dd/MM/yyyy', { locale: it }) : 'Nessuna data selezionata'}
                             </h3>
                             {dailySlots.length === 0 ? (
                                 <p className="text-muted-foreground p-4 text-center">
-                                   {selectedDate ? (isBefore(selectedDate, startOfDay(new Date())) ? "Impossibile gestire slot per date passate (a meno che non siano già prenotate)." : `Nessuno slot orario da 60 minuti assegnato dall'admin per te il ${daysOfWeek[getDay(selectedDate)]}.`) : 'Seleziona una data per visualizzare gli slot.'}
+                                   {selectedAvailabilityDate ? (isBefore(selectedAvailabilityDate, startOfDay(new Date())) ? "Impossibile gestire slot per date passate (a meno che non siano già prenotate)." : `Nessuno slot orario da 60 minuti assegnato dall'admin per te il ${daysOfWeek[getDay(selectedAvailabilityDate)]}.`) : 'Seleziona una data per visualizzare gli slot.'}
                                 </p>
                             ) : (
                                 <div className="overflow-x-auto border rounded-md max-h-96">
@@ -662,7 +668,7 @@ export function ProfessorInterface() {
                                     <TableBody>
                                       {dailySlots.map((slot) => {
                                         const isBooked = !!slot.bookedBy;
-                                        const isPastSlot = selectedDate ? isBefore(selectedDate, startOfDay(new Date())) : false; // Check if the slot's date is past
+                                        const isPastSlot = selectedAvailabilityDate ? isBefore(selectedAvailabilityDate, startOfDay(new Date())) : false; // Check if the slot's date is past
                                         const isPast = isPastSlot && !isBooked; // Consider it past only if not booked
                                         const statusText = isBooked ? 'Prenotato' : (slot.isAvailable ? 'Disponibile' : 'Non Disponibile');
                                         const statusColor = isBooked ? 'text-gray-500' : (slot.isAvailable ? 'text-green-600' : 'text-red-600');
@@ -676,7 +682,7 @@ export function ProfessorInterface() {
                                             <TableCell className={`${statusColor} font-medium`}>{statusText}</TableCell>
                                             <TableCell className="text-center">
                                                  {isBooked ? (
-                                                      <span className="text-muted-foreground font-normal px-1 italic">Prenotato</span>
+                                                     <span className="text-muted-foreground font-normal px-1 italic">Prenotato</span>
                                                  ) : isPast ? (
                                                       <span className="text-muted-foreground font-normal px-1 italic">Passato</span>
                                                  ) : (
@@ -752,44 +758,58 @@ export function ProfessorInterface() {
                   </Card>
             </TabsContent>
 
-            {/* Tab 2: Book Lessons with Other Professors (was Tab 3) */}
+            {/* Tab 2: Book Lessons with Other Professors */}
             <TabsContent value="book-lessons">
                  <Card className="w-full">
                      <CardHeader>
                          <CardTitle>Prenota Lezioni con Altri Professori</CardTitle>
                          {(assignedProfessorEmails && assignedProfessorEmails.length > 0) ? (
-                             <CardDescription>Visualizza e prenota slot disponibili con i professori a te assegnati ({assignedProfessorEmails.join(', ')}).</CardDescription>
+                             <CardDescription>Seleziona una data per visualizzare e prenotare slot disponibili con i professori a te assegnati ({assignedProfessorEmails.join(', ')}).</CardDescription>
                          ) : (
                              <CardDescription>Non ti è stato assegnato nessun professore per prenotare lezioni.</CardDescription>
                          )}
                      </CardHeader>
-                     <CardContent className="grid gap-6">
-                         {/* Available Slots TO BOOK */}
+                     <CardContent className="grid gap-6 md:grid-cols-2">
+                          {/* Calendar for Booking */}
+                          <div className="flex justify-center">
+                              <Calendar
+                                  locale={it}
+                                  mode="single"
+                                  selected={selectedBookingDate}
+                                  onSelect={setSelectedBookingDate}
+                                  className="rounded-md border"
+                                  disabled={(date) => isBefore(date, startOfDay(new Date()))} // Disable past dates
+                              />
+                          </div>
+                         {/* Available Slots TO BOOK for selected date */}
                          <div>
-                             <h3 className="text-lg font-semibold mb-3">Slot Disponibili per la Prenotazione</h3>
+                             <h3 className="text-lg font-semibold mb-3">Slot Disponibili per {selectedBookingDate ? format(selectedBookingDate, 'dd/MM/yyyy', { locale: it }) : 'Seleziona una data'}</h3>
                              {(assignedProfessorEmails && assignedProfessorEmails.length > 0) ? (
-                                 availableSlotsToBook.length === 0 ? (
-                                     <p className="text-muted-foreground p-4 text-center">Nessuno slot attualmente disponibile per la prenotazione con i professori assegnati.</p>
+                                 selectedBookingDate ? (
+                                     filteredAvailableSlotsToBook.length === 0 ? (
+                                         <p className="text-muted-foreground p-4 text-center">Nessuno slot disponibile per la prenotazione in questa data con i professori assegnati.</p>
+                                     ) : (
+                                         <div className="overflow-x-auto border rounded-md max-h-96">
+                                             <Table>
+                                                 <TableHeader><TableRow><TableHead className="w-24">Ora</TableHead><TableHead>Aula</TableHead><TableHead>Professore</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead className="w-28 text-center">Azioni</TableHead></TableRow></TableHeader>
+                                                 <TableBody>
+                                                     {filteredAvailableSlotsToBook.map((slot) => (
+                                                         <TableRow key={`available-to-book-${slot.id}`}>
+                                                             <TableCell>{slot.time}</TableCell>
+                                                             <TableCell>{slot.classroom}</TableCell>
+                                                             <TableCell>{slot.professorEmail}</TableCell>
+                                                             <TableCell className="text-center">{slot.duration} min</TableCell>
+                                                             <TableCell className="text-center">
+                                                                 <Button onClick={() => bookLessonWithProfessor(slot)} size="sm">Prenota</Button>
+                                                             </TableCell>
+                                                         </TableRow>
+                                                     ))}
+                                                 </TableBody>
+                                             </Table>
+                                         </div>
+                                     )
                                  ) : (
-                                     <div className="overflow-x-auto border rounded-md max-h-96">
-                                         <Table>
-                                             <TableHeader><TableRow><TableHead className="w-32">Data</TableHead><TableHead className="w-24">Ora</TableHead><TableHead>Aula</TableHead><TableHead>Professore</TableHead><TableHead className="w-20 text-center">Durata</TableHead><TableHead className="w-28 text-center">Azioni</TableHead></TableRow></TableHeader>
-                                             <TableBody>
-                                                 {availableSlotsToBook.map((slot) => (
-                                                     <TableRow key={`available-to-book-${slot.id}`}>
-                                                         <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
-                                                         <TableCell>{slot.time}</TableCell>
-                                                         <TableCell>{slot.classroom}</TableCell>
-                                                         <TableCell>{slot.professorEmail}</TableCell>
-                                                         <TableCell className="text-center">{slot.duration} min</TableCell>
-                                                         <TableCell className="text-center">
-                                                             <Button onClick={() => bookLessonWithProfessor(slot)} size="sm">Prenota</Button>
-                                                         </TableCell>
-                                                     </TableRow>
-                                                 ))}
-                                             </TableBody>
-                                         </Table>
-                                     </div>
+                                     <p className="text-muted-foreground p-4 text-center">Seleziona una data dal calendario per vedere gli slot disponibili.</p>
                                  )
                              ) : (
                                  <p className="text-muted-foreground p-4 text-center">Nessun professore assegnato.</p>
@@ -797,7 +817,7 @@ export function ProfessorInterface() {
                          </div>
 
                          {/* Lessons THIS Professor Booked WITH OTHERS */}
-                         <div>
+                         <div className="md:col-span-2"> {/* Span across both columns below the calendar/slots */}
                             <h3 className="text-lg font-semibold mb-3 mt-6">Le Tue Lezioni Prenotate (con altri)</h3>
                             {myBookedLessons.length === 0 ? (
                                  <p className="text-muted-foreground p-4 text-center">Non hai prenotato nessuna lezione con altri professori.</p>
