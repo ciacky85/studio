@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator'; // Import Separator
 import { format, parseISO } from 'date-fns'; // Import date-fns functions
 // Import the RENAMED generic dialog
 import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
+import { cn } from "@/lib/utils"; // Import cn for conditional classes
 
 // Update DisplayUser interface slightly for clarity if needed (role already exists)
 interface DisplayUser {
@@ -404,7 +405,12 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                             const scheduleKey = `${day}-${time}`;
                                             const assignedProfessor = schedule[scheduleKey] || ''; // Default to empty string if undefined
                                             return (
-                                                <TableCell key={scheduleKey}>
+                                                <TableCell
+                                                    key={scheduleKey}
+                                                    className={cn(
+                                                        assignedProfessor ? 'bg-green-100 dark:bg-green-900' : ''
+                                                    )}
+                                                >
                                                     <Select
                                                         value={assignedProfessor || 'unassigned'} // Ensure value corresponds to an item or 'unassigned'
                                                         onValueChange={(value) => handleProfessorChange(day, time, value)}
@@ -585,3 +591,6 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
     </>
   );
 }
+
+
+    
