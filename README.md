@@ -80,13 +80,9 @@ Docker Compose simplifies the process of building and running multi-container Do
 From the root directory of the project, run:
 
 ```bash
-# Build locally
-docker build -t classroom-scheduler .
-# OR tag for GitHub Container Registry
-# docker build -t ghcr.io/<github-username>/classroom-scheduler:latest .
+# Build locally and tag for GitHub Container Registry
+docker build -t ghcr.io/ciacky85/studio:latest .
 ```
-
-*   Replace `<github-username>` with your GitHub username if pushing to GHCR.
 
 #### Running the Docker Container
 
@@ -96,7 +92,7 @@ To run the application inside a Docker container manually:
 docker run -p 3000:3000 \
   --env-file .env \
   --name classroom-scheduler-app \
-  -d classroom-scheduler
+  -d ghcr.io/ciacky85/studio:latest
 ```
 
 **Explanation:**
@@ -105,23 +101,22 @@ docker run -p 3000:3000 \
 *   `--env-file .env`: Loads environment variables from the `.env` file in the current directory. **Ensure the `.env` file exists where you run this command.**
 *   `--name classroom-scheduler-app`: Assigns a name to the container.
 *   `-d`: Runs the container in detached mode.
-*   `classroom-scheduler`: The name of the image you built.
+*   `ghcr.io/ciacky85/studio:latest`: The name and tag of the image you built.
 
 ### Pushing to GitHub Container Registry (Optional)
 
 1.  **Build and Tag:**
     ```bash
-    docker build -t ghcr.io/<github-username>/classroom-scheduler:latest .
+    docker build -t ghcr.io/ciacky85/studio:latest .
     ```
-    Replace `<github-username>` with your GitHub username.
 2.  **Login:**
     ```bash
-    docker login ghcr.io -u <github-username>
+    docker login ghcr.io -u ciacky85
     ```
     Enter your password or Personal Access Token (with `read:packages` and `write:packages` scopes).
 3.  **Push:**
     ```bash
-    docker push ghcr.io/<github-username>/classroom-scheduler:latest
+    docker push ghcr.io/ciacky85/studio:latest
     ```
     This command uploads your locally built image to the GitHub Container Registry.
 
@@ -131,12 +126,12 @@ Deploying to a Synology NAS using Container Manager typically involves these ste
 
 1.  **Install Container Manager:** Ensure the Container Manager package is installed via the Synology Package Center.
 2.  **Get Docker Image on NAS:**
-    *   **Option A (Pull from Registry):** If you pushed the image to a registry (like Docker Hub or GHCR), open Container Manager, go to "Registry", search for your image (e.g., `ghcr.io/<your-username>/classroom-scheduler`), and download (pull) the `latest` tag.
-    *   **Option B (Upload .tar file):** Build the image locally (`docker build -t classroom-scheduler .`), save it (`docker save -o classroom-scheduler.tar classroom-scheduler`), transfer `classroom-scheduler.tar` to your NAS (e.g., via File Station), then in Container Manager go to "Image", click "Add", choose "Add From File", and upload the `.tar` file.
+    *   **Option A (Pull from Registry):** If you pushed the image to GitHub Container Registry (GHCR), open Container Manager, go to "Registry", search for your image (`ghcr.io/ciacky85/studio`), and download (pull) the `latest` tag.
+    *   **Option B (Upload .tar file):** Build the image locally (`docker build -t ghcr.io/ciacky85/studio:latest .`), save it (`docker save -o studio.tar ghcr.io/ciacky85/studio:latest`), transfer `studio.tar` to your NAS (e.g., via File Station), then in Container Manager go to "Image", click "Add", choose "Add From File", and upload the `.tar` file.
     *   **Option C (Use docker-compose.yml):** If you have SSH access to your NAS and Docker Compose installed *on the NAS*, you can transfer the entire project folder (including `docker-compose.yml` and `.env`), SSH into the NAS, navigate to the folder, and run `docker compose up -d`. This is more advanced.
 3.  **Launch Container (if using Option A or B):**
     *   Go to the "Image" section in Container Manager.
-    *   Select the `classroom-scheduler` (or `ghcr.io/...`) image and click "Run" or "Launch".
+    *   Select the `ghcr.io/ciacky85/studio` image and click "Run" or "Launch".
     *   **Container Name:** Give it a name (e.g., `ClassroomApp`).
     *   **Enable auto-restart:** Recommended for web services.
     *   **Port Settings:** Click "Add Port Setting". Set "Local Port" to `3000` (or another available port on your NAS), "Container Port" to `3000`, and Type to `TCP`.
