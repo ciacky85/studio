@@ -11,8 +11,9 @@ import {Input} from '@/components/ui/input';
 import Link from 'next/link';
 import {useRouter, usePathname} from 'next/navigation';
 import { readData } from '@/services/data-storage';
-// Correctly import AllUsersData and UserData from app-data
-import type { AllUsersData, UserData } from '@/types/app-data';
+// Correctly import types from their respective files
+import type { AllUsersData } from '@/types/app-data';
+import type { UserData } from '@/types/user';
 
 // Constants for filenames and keys
 const USERS_DATA_FILE = 'users'; // Stores all users
@@ -70,8 +71,8 @@ export default function Home() {
   const handleLogin = async () => {
     setLoginError(null);
 
-    let userFound = false; // Initialize here
-    let correctPassword = false; // Initialize here
+    let userFound = false;
+    let correctPassword = false;
     let userRole: 'admin' | 'professor' | 'student' | null = null;
     let userApproved = false;
 
@@ -183,4 +184,3 @@ export default function Home() {
     </>
   );
 }
-
