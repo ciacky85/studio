@@ -12,8 +12,8 @@ import Link from 'next/link';
 import {useRouter, usePathname} from 'next/navigation';
 import { readData } from '@/services/data-storage';
 // Correctly import types from their respective files
-// Try importing BOTH types from app-data.d.ts
-import type { AllUsersData, UserData } from '@/types/app-data'; // Consolidated import
+import type { AllUsersData } from '@/types/app-data'; // Consolidated import
+import type { UserData } from '@/types/user'; // Import UserData type
 
 
 // Constants for filenames and keys
