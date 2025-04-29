@@ -10,9 +10,9 @@ import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/compo
 import {Input} from '@/components/ui/input';
 import Link from 'next/link';
 import {useRouter, usePathname} from 'next/navigation';
-import { readData } from '@/services/data-storage'; // Import data storage service
-import type { UserData } from '@/types/user'; // Keep UserData import from here if needed, or move it too
-import type { AllUsersData } from '@/types/app-data'; // Correct import path for AllUsersData
+import { readData } from '@/services/data-storage';
+// Correctly import AllUsersData and UserData from app-data
+import type { AllUsersData, UserData } from '@/types/app-data';
 
 // Constants for filenames and keys
 const USERS_DATA_FILE = 'users'; // Stores all users
@@ -70,8 +70,8 @@ export default function Home() {
   const handleLogin = async () => {
     setLoginError(null);
 
-    let userFound = false;
-    let correctPassword = false;
+    let userFound = false; // Initialize here
+    let correctPassword = false; // Initialize here
     let userRole: 'admin' | 'professor' | 'student' | null = null;
     let userApproved = false;
 
@@ -83,7 +83,8 @@ export default function Home() {
         userApproved = true; // Hardcoded admin is always approved
     } else {
       // Read all users data from the file
-      const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+      // Explicitly type allUsers with the correctly imported AllUsersData
+      const allUsers: AllUsersData = await readData<AllUsersData>(USERS_DATA_FILE, {});
       const userData = allUsers[username]; // Find user by email (username)
 
       if (userData) {
