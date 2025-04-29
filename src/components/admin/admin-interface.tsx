@@ -11,320 +11,237 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import {Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
-import {sendEmail} from '@/services/email'; // Import the email service
+import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
+import {sendEmail} from '@/services/email';
 import {useToast} from "@/hooks/use-toast";
-import type { UserData } from '@/types/user'; // Assuming UserData type is defined
-import { Separator } from '@/components/ui/separator'; // Import Separator
-import { format, parseISO } from 'date-fns'; // Import date-fns functions
-// Import the RENAMED generic dialog
+import type { UserData } from '@/types/user';
+import { Separator } from '@/components/ui/separator';
+import { format, parseISO } from 'date-fns';
 import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
-import { cn } from "@/lib/utils"; // Import cn for conditional classes
-import type {DisplayUser} from '@/types/display-user'; // Use DisplayUser type
-import { it } from 'date-fns/locale'; // Import Italian locale
+import { cn } from "@/lib/utils";
+import type {DisplayUser} from '@/types/display-user';
+import type { BookableSlot, ScheduleAssignment } from '@/types/schedule'; // Import schedule types
+import type { AllUsersData, AllProfessorAvailability, ClassroomSchedule } from '@/types/app-data'; // Import app data types
+import { it } from 'date-fns/locale';
+import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 
+// Constants for filenames
+const USERS_DATA_FILE = 'users';
+const AVAILABILITY_DATA_FILE = 'availability';
+const SCHEDULE_DATA_FILE = 'schedule';
+const LOGGED_IN_USER_KEY = 'loggedInUser'; // Session key (localStorage)
 
-// Define the structure of a bookable slot (from professor/student perspective)
-interface BookableSlot {
-    id: string; // 'YYYY-MM-DD-HH:00-ClassroomName-professorEmail'
-    date: string; // 'YYYY-MM-DD'
-    day: string;
-    time: string; // 'HH:MM'
-    classroom: string; // Added classroom
-    duration: number; // e.g., 60
-    isAvailable: boolean;
-    bookedBy: string | null; // Student or Professor email
-    bookingTime: string | null; // ISO string timestamp
-    professorEmail: string; // The email of the professor offering the slot
-}
-
-// Define the structure for the classroom schedule assignment
-interface ScheduleAssignment {
-    professor: string; // Professor email assigned to this classroom at this time, or '' if unassigned
-    // Classroom name is part of the key in the schedule state
-}
-
-
-// Key for storing all professors' availability (date-specific slots) in localStorage
-const ALL_PROFESSOR_AVAILABILITY_KEY = 'allProfessorAvailability';
-// Key for classroom schedule - structure changed
-const CLASSROOM_SCHEDULE_KEY = 'classroomSchedule_v2'; // Use a new key to avoid conflicts with old format
-// Key for logged-in user info
-const LOGGED_IN_USER_KEY = 'loggedInUser';
-
-// Define available classrooms
+// Define available classrooms (could be moved to a config file later)
 const classrooms = ['Aula 1 Grande', 'Aula 2 Piccola'];
 
 // Define a color palette for professors
 const professorColors = [
-  'bg-blue-100 dark:bg-blue-900',
-  'bg-yellow-100 dark:bg-yellow-900',
-  'bg-purple-100 dark:bg-purple-900',
-  'bg-pink-100 dark:bg-pink-900',
-  'bg-indigo-100 dark:bg-indigo-900',
-  'bg-teal-100 dark:bg-teal-900',
-  'bg-orange-100 dark:bg-orange-900',
-  'bg-lime-100 dark:bg-lime-900',
-  'bg-cyan-100 dark:bg-cyan-900',
+  'bg-blue-100 dark:bg-blue-900', 'bg-yellow-100 dark:bg-yellow-900', 'bg-purple-100 dark:bg-purple-900',
+  'bg-pink-100 dark:bg-pink-900', 'bg-indigo-100 dark:bg-indigo-900', 'bg-teal-100 dark:bg-teal-900',
+  'bg-orange-100 dark:bg-orange-900', 'bg-lime-100 dark:bg-lime-900', 'bg-cyan-100 dark:bg-cyan-900',
   'bg-emerald-100 dark:bg-emerald-900',
 ];
 
 // Function to get a color class based on professor email
 const getProfessorColor = (professorEmail: string, allProfessors: string[]): string => {
     const index = allProfessors.indexOf(professorEmail);
-    if (index === -1) {
-        return ''; // No color if professor not found (shouldn't happen)
-    }
-    return professorColors[index % professorColors.length];
+    return index === -1 ? '' : professorColors[index % professorColors.length];
 };
 
 
 export function AdminInterface() {
   const [pendingRegistrations, setPendingRegistrations] = useState<DisplayUser[]>([]);
-  const [approvedUsers, setApprovedUsers] = useState<DisplayUser[]>([]); // State for approved users
+  const [approvedUsers, setApprovedUsers] = useState<DisplayUser[]>([]);
   const [professors, setProfessors] = useState<string[]>([]);
-  // New schedule structure: Key: "Day-Time-Classroom", Value: { professor: string }
-  const [schedule, setSchedule] = useState<Record<string, ScheduleAssignment>>({});
-  const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]); // State for all booked slots
+  const [schedule, setSchedule] = useState<ClassroomSchedule>({}); // Use ClassroomSchedule type
+  const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]);
   const [isManageProfessorsDialogOpen, setIsManageProfessorsDialogOpen] = useState(false);
-  // State to hold the user (student OR professor) selected for professor assignment
   const [selectedUserForProfessorManagement, setSelectedUserForProfessorManagement] = useState<DisplayUser | null>(null);
-
+  const [isLoading, setIsLoading] = useState(true); // Loading state
 
   const {toast} = useToast();
 
-  // Function to sort slots consistently by date then time
    const sortSlots = (slots: BookableSlot[]) => {
       return slots.sort((a, b) => {
-          // Defensive check for invalid slot data before sorting
-          if (!a?.date || !b?.date || !a?.time || !b?.time) {
-              console.warn('Tentativo di ordinare dati slot non validi:', a, b);
-              return 0; // Avoid erroring, maintain relative order
-          }
+          if (!a?.date || !b?.date || !a?.time || !b?.time) return 0;
           const dateCompare = a.date.localeCompare(b.date);
           if (dateCompare !== 0) return dateCompare;
-          // Simple string comparison works for HH:00 format
           return a.time.localeCompare(b.time);
       });
    };
 
 
-  // Function to load users AND all booked slots from localStorage
-  const loadData = useCallback(() => {
-    if (typeof window !== 'undefined') {
+  // Function to load data from files
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+      const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
+      const loadedSchedule = await readData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {});
+
       const loadedPending: DisplayUser[] = [];
       const loadedApproved: DisplayUser[] = [];
       const loadedProfessors: string[] = [];
       let idCounter = 1;
 
-      // Load Users
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        // Basic check to avoid parsing non-user/non-schedule items
-        if (key && ![CLASSROOM_SCHEDULE_KEY, 'availableSlots', LOGGED_IN_USER_KEY, ALL_PROFESSOR_AVAILABILITY_KEY].includes(key)) { // Exclude known non-user keys
-          try {
-            const item = localStorage.getItem(key);
-            if (item) {
-              // Adjust type expectation for assignedProfessorEmail to be string[]
-              const userData: UserData & { password?: string } = JSON.parse(item);
+      // Process Users
+      Object.entries(allUsers).forEach(([email, userData]) => {
+         if (userData.role && ['student', 'professor', 'admin'].includes(userData.role) && typeof userData.approved === 'boolean') {
+            const name = email.split('@')[0];
+            const userDisplayData: DisplayUser = {
+              id: idCounter++, name: name, role: userData.role, email: email,
+              assignedProfessorEmails: Array.isArray(userData.assignedProfessorEmail) ? userData.assignedProfessorEmail : null,
+            };
 
-              // Check if it looks like a user registration entry
-              // Check includes 'admin' role now, although admins won't be assignable
-              if (userData.role && ['student', 'professor', 'admin'].includes(userData.role) && typeof userData.approved === 'boolean') {
-                 const name = key.split('@')[0]; // Simple name extraction from email
-                 const userDisplayData: DisplayUser = {
-                   id: idCounter++,
-                   name: name,
-                   role: userData.role, // Use the role from storage
-                   email: key,
-                   // Ensure assignedProfessorEmails is handled as an array or null
-                   assignedProfessorEmails: Array.isArray(userData.assignedProfessorEmail) ? userData.assignedProfessorEmail : null,
-                 };
-
-                 if (userData.approved === true) {
-                   // Only add non-admin users to the approved list shown in the table
-                    if(userData.role !== 'admin') {
-                        loadedApproved.push(userDisplayData);
-                    }
-                   // Add professors to the list used for scheduling and assignment dialog
-                   if (userData.role === 'professor') {
-                     loadedProfessors.push(key); // Add approved professors to the list
-                   }
-                 } else { // approved === false means pending
-                   loadedPending.push(userDisplayData);
-                 }
-              }
+            if (userData.approved === true) {
+               if(userData.role !== 'admin') loadedApproved.push(userDisplayData);
+               if (userData.role === 'professor') loadedProfessors.push(email);
+            } else {
+               loadedPending.push(userDisplayData);
             }
-          } catch (e) {
-            console.warn("Impossibile analizzare l'elemento da local storage per la chiave (potrebbero non essere dati utente):", key, e);
-          }
-        }
-      }
+         }
+      });
       setPendingRegistrations(loadedPending);
       setApprovedUsers(loadedApproved);
-      setProfessors(loadedProfessors.sort()); // Sort professors alphabetically
+      setProfessors(loadedProfessors.sort());
 
-      // Load All Booked Slots
-      const storedAvailability = localStorage.getItem(ALL_PROFESSOR_AVAILABILITY_KEY);
-      let allProfessorAvailability: Record<string, BookableSlot[]> = {}; // Key: professorEmail
-        if (storedAvailability) {
-          try {
-            const parsedAvailability = JSON.parse(storedAvailability);
-             if (typeof parsedAvailability === 'object' && parsedAvailability !== null) {
-                 allProfessorAvailability = parsedAvailability;
-             } else {
-                  console.warn("Formato allProfessorAvailability non valido trovato in localStorage.");
-                  allProfessorAvailability = {}; // Reset if invalid
-             }
-          } catch (e) {
-            console.error("Impossibile analizzare allProfessorAvailability", e);
-            allProfessorAvailability = {};
-          }
-        }
+      // Process Booked Slots from Availability Data
+       const loadedAllBooked: BookableSlot[] = [];
+       Object.values(allAvailability).flat().forEach(slot => {
+           if (slot && slot.id && slot.date && slot.time && slot.classroom && slot.bookedBy && slot.professorEmail && slot.duration === 60) {
+              loadedAllBooked.push(slot);
+           }
+       });
+       setAllBookedSlots(sortSlots(loadedAllBooked));
 
-        const loadedAllBooked: BookableSlot[] = [];
-        // Iterate through each professor's list of slots
-         Object.values(allProfessorAvailability).flat().forEach(slot => {
-             // Validate the slot structure and check if it's booked and includes classroom
-             if (slot && slot.id && slot.date && slot.time && slot.classroom && slot.bookedBy && slot.professorEmail && slot.duration === 60) {
-                loadedAllBooked.push(slot);
-             }
-         });
+       // Set Schedule
+       setSchedule(loadedSchedule);
 
-        // Sort and set the state
-        setAllBookedSlots(sortSlots(loadedAllBooked));
-
-         // Load the new classroom schedule structure
-         const storedSchedule = localStorage.getItem(CLASSROOM_SCHEDULE_KEY);
-         if (storedSchedule) {
-             try {
-                 const parsedSchedule = JSON.parse(storedSchedule);
-                 if (typeof parsedSchedule === 'object' && parsedSchedule !== null) {
-                     setSchedule(parsedSchedule);
-                 } else {
-                     console.warn("Formato orario classroom non valido trovato in localStorage.");
-                     setSchedule({});
-                 }
-             } catch (e) {
-                 console.error("Impossibile analizzare classroomSchedule", e);
-                 setSchedule({});
-             }
-         } else {
-             setSchedule({}); // Initialize empty if nothing is stored
-         }
+    } catch (error) {
+        console.error("Failed to load data:", error);
+        toast({ variant: "destructive", title: "Errore Caricamento Dati", description: "Impossibile caricare i dati dell'applicazione." });
+        // Set default empty states on error
+        setPendingRegistrations([]);
+        setApprovedUsers([]);
+        setProfessors([]);
+        setSchedule({});
+        setAllBookedSlots([]);
+    } finally {
+       setIsLoading(false);
     }
-  }, []); // Empty dependency array, will run on mount
+  }, [toast]); // Add toast to dependencies
 
-  // Load all data on mount
+  // Load data on mount
   useEffect(() => {
     loadData();
   }, [loadData]);
 
 
-  // Save schedule to local storage whenever it changes (uses new key)
+  // Save schedule to file whenever it changes
   useEffect(() => {
-     if (typeof window !== 'undefined') { // Check if schedule is not empty before saving
-        // Avoid saving an empty object if it was initialized empty and never changed
-        if(Object.keys(schedule).length > 0) {
-           localStorage.setItem(CLASSROOM_SCHEDULE_KEY, JSON.stringify(schedule));
-        } else {
-            // If schedule becomes empty (e.g., by unassigning all), remove the item
-            // This prevents saving {} if it was loaded as {} and never modified.
-            const storedSchedule = localStorage.getItem(CLASSROOM_SCHEDULE_KEY);
-            if(storedSchedule && storedSchedule !== '{}') { // Only remove if it existed and wasn't empty
-                localStorage.removeItem(CLASSROOM_SCHEDULE_KEY);
+     // Avoid saving during initial load or if schedule hasn't changed meaningfully
+     if (!isLoading && Object.keys(schedule).length > 0) {
+        writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, schedule).catch(err => {
+            console.error("Failed to save schedule:", err);
+            toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario delle aule." });
+        });
+     } else if (!isLoading && Object.keys(schedule).length === 0) {
+        // Handle case where schedule becomes empty after being loaded
+        // Check if file exists before attempting to write empty {}
+        // This prevents overwriting potentially valid empty data loaded initially
+        readData(SCHEDULE_DATA_FILE, {}).then(existingSchedule => {
+            if (Object.keys(existingSchedule).length > 0) { // Only write if it wasn't already empty
+                writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {}).catch(err => {
+                   console.error("Failed to save empty schedule:", err);
+                    toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario delle aule." });
+                });
             }
-        }
+        }).catch(err => console.error("Error reading schedule before saving empty:", err)); // Log read error
      }
-  }, [schedule]); // Dependency array includes schedule
+  }, [schedule, isLoading, toast]); // Include isLoading and toast
 
   const approveRegistration = async (email: string) => {
-    if (typeof window !== 'undefined') {
-      const userDataString = localStorage.getItem(email);
-      if (userDataString) {
-        try {
-          let userData: UserData = JSON.parse(userDataString);
-          userData.approved = true; // Mark as approved
-          // Initialize assignedProfessorEmails as null or empty array for students AND professors upon approval
-          userData.assignedProfessorEmail = userData.assignedProfessorEmail || null; // Keep existing if somehow set, else null
+    setIsLoading(true); // Indicate loading state
+    try {
+        const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+        const userData = allUsers[email];
 
-          localStorage.setItem(email, JSON.stringify(userData)); // Update in localStorage
+        if (userData) {
+            userData.approved = true;
+            userData.assignedProfessorEmail = userData.assignedProfessorEmail || null; // Ensure it's initialized
 
-          // Find the user in pending list to move them
-          const userToApprove = pendingRegistrations.find((reg) => reg.email === email);
+            await writeData<AllUsersData>(USERS_DATA_FILE, allUsers); // Save updated users data
 
-          // Send approval email
-          await sendEmail({
-            to: email,
-            subject: 'Registrazione Approvata',
-            html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
-          });
-
-          // Update states: remove from pending, add to approved (if not admin)
-          setPendingRegistrations(prev => prev.filter((reg) => reg.email !== email));
-          if (userToApprove && userToApprove.role !== 'admin') { // Only add non-admins to UI list
-             const approvedUserData: DisplayUser = {
-                ...userToApprove,
-                assignedProfessorEmails: userData.assignedProfessorEmail // Pass the potentially updated array/null value
-             };
-            setApprovedUsers(prev => [...prev, approvedUserData]);
-            // If the approved user is a professor, update the professor list used for scheduling AND assignment
-            if (userToApprove.role === 'professor') {
-              setProfessors(prev => [...prev, email].sort()); // Add and sort
-            }
-          }
-
-
-          toast({
-            title: "Registrazione Approvata",
-            description: `La registrazione per ${email} è stata approvata.`,
-          });
-        } catch (error) {
-           console.error("Errore durante l'approvazione per:", email, error);
-           toast({
-             variant: "destructive",
-             title: "Errore Approvazione Registrazione",
-             description: `Impossibile approvare la registrazione per ${email}. Errore: ${error instanceof Error ? error.message : String(error)}`,
-           });
-        }
-      } else {
-         toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
-      }
-    }
-  };
-
-  const rejectRegistration = async (email: string) => {
-     if (typeof window !== 'undefined') {
-       const registration = pendingRegistrations.find((reg) => reg.email === email);
-       if (registration) {
-         try {
-           localStorage.removeItem(email); // Remove registration from local storage
-
-           // Send rejection email
-           await sendEmail({
-             to: email,
-             subject: 'Registrazione Rifiutata',
-             html: '<p>La tua registrazione è stata rifiutata.</p>',
-           });
-           // Remove from pending registrations state
-           setPendingRegistrations(prev => prev.filter((reg) => reg.email !== email));
-           toast({
-             title: "Registrazione Rifiutata",
-             description: `La registrazione per ${email} è stata rifiutata.`,
-           });
-         } catch (error) {
-            console.error("Errore durante il rifiuto della registrazione per:", email, error);
-            toast({
-              variant: "destructive",
-              title: "Errore Rifiuto Registrazione",
-              description: `Impossibile inviare email di rifiuto a ${email}. Errore: ${error instanceof Error ? error.message : String(error)}`,
+            // Send approval email
+            await sendEmail({
+                to: email,
+                subject: 'Registrazione Approvata',
+                html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
             });
-         }
-       } else {
-            toast({ variant: "destructive", title: "Errore", description: "Registrazione non trovata nell'elenco in sospeso." });
-       }
-     }
-   };
+
+            toast({
+                title: "Registrazione Approvata",
+                description: `La registrazione per ${email} è stata approvata.`,
+            });
+            await loadData(); // Refresh all data after successful approval
+        } else {
+            toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
+        }
+    } catch (error: any) {
+        console.error("Errore durante l'approvazione per:", email, error);
+        toast({
+            variant: "destructive",
+            title: "Errore Approvazione Registrazione",
+            description: `Impossibile approvare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
+        });
+    } finally {
+       setIsLoading(false); // Reset loading state
+    }
+};
+
+const rejectRegistration = async (email: string) => {
+    setIsLoading(true);
+    try {
+        const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+        const registration = pendingRegistrations.find((reg) => reg.email === email); // Check pending state first
+
+        if (registration && allUsers[email]) {
+            delete allUsers[email]; // Remove user from the data object
+            await writeData<AllUsersData>(USERS_DATA_FILE, allUsers); // Save the updated data
+
+            // Send rejection email
+             try {
+               await sendEmail({
+                 to: email,
+                 subject: 'Registrazione Rifiutata',
+                 html: '<p>La tua registrazione è stata rifiutata.</p>',
+               });
+             } catch (emailError: any) {
+                console.error("Errore invio email di rifiuto:", emailError);
+                 // Optionally notify admin about email failure, but proceed with rejection
+                 toast({ title: "Avviso", description: `Registrazione rifiutata per ${email}, ma errore nell'invio email.` });
+             }
+
+            toast({
+                title: "Registrazione Rifiutata",
+                description: `La registrazione per ${email} è stata rifiutata ed eliminata.`,
+            });
+            await loadData(); // Refresh data
+        } else {
+             toast({ variant: "destructive", title: "Errore", description: "Registrazione non trovata o dati utente mancanti." });
+        }
+    } catch (error: any) {
+        console.error("Errore durante il rifiuto della registrazione per:", email, error);
+        toast({
+            variant: "destructive",
+            title: "Errore Rifiuto Registrazione",
+            description: `Impossibile rifiutare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
+        });
+    } finally {
+        setIsLoading(false);
+    }
+};
+
 
   // Function to generate time slots (HOURLY)
   function generateTimeSlots() {
@@ -336,56 +253,50 @@ export function AdminInterface() {
   }
 
   const timeSlots = generateTimeSlots();
-  const days = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']; // Italian days
+  const days = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
 
   const handleProfessorAssignmentChange = (day: string, time: string, classroom: string, professorEmail: string) => {
-    const key = `${day}-${time}-${classroom}`; // Include classroom in the key
+    const key = `${day}-${time}-${classroom}`;
     const newAssignment: ScheduleAssignment = {
         professor: professorEmail === 'unassigned' ? '' : professorEmail
     };
+    // Update local state immediately for responsiveness
     setSchedule(prevSchedule => ({ ...prevSchedule, [key]: newAssignment }));
-    // Note: Saving to localStorage is now handled by the useEffect hook listening to schedule changes
+    // Saving is handled by the useEffect hook watching `schedule`
 };
 
 
-  // Updated function to handle saving assigned professors for ANY user (student or professor)
-  const handleSaveUserProfessors = (userEmail: string, assignedEmails: string[]) => {
-    if (typeof window !== 'undefined') {
-        const userDataString = localStorage.getItem(userEmail);
-        if (userDataString) {
-            try {
-                let userData: UserData = JSON.parse(userDataString);
-                userData.assignedProfessorEmail = assignedEmails.length > 0 ? assignedEmails : null; // Store array or null if empty
-                localStorage.setItem(userEmail, JSON.stringify(userData));
+ const handleSaveUserProfessors = async (userEmail: string, assignedEmails: string[]) => {
+     setIsLoading(true);
+     try {
+         const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+         const userData = allUsers[userEmail];
 
-                // Update the state to reflect the change in the UI
-                setApprovedUsers(prevUsers =>
-                    prevUsers.map(user =>
-                        user.email === userEmail
-                            ? { ...user, assignedProfessorEmails: userData.assignedProfessorEmail }
-                            : user
-                    )
-                );
+         if (userData) {
+             userData.assignedProfessorEmail = assignedEmails.length > 0 ? assignedEmails : null;
+             await writeData<AllUsersData>(USERS_DATA_FILE, allUsers);
 
-                toast({
-                    title: "Professori Aggiornati",
-                    description: `Le assegnazioni dei professori per ${userEmail} sono state aggiornate.`,
-                });
-                setIsManageProfessorsDialogOpen(false); // Close the dialog
-                setSelectedUserForProfessorManagement(null); // Deselect user
-            } catch (error) {
-                console.error("Errore durante l'aggiornamento dei professori assegnati:", userEmail, assignedEmails, error);
-                toast({
-                    variant: "destructive",
-                    title: "Errore Aggiornamento",
-                    description: `Impossibile aggiornare i professori assegnati. Errore: ${error instanceof Error ? error.message : String(error)}`,
-                });
-            }
-        } else {
-            toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
-        }
-    }
-};
+             toast({
+                 title: "Professori Aggiornati",
+                 description: `Le assegnazioni dei professori per ${userEmail} sono state aggiornate.`,
+             });
+             setIsManageProfessorsDialogOpen(false);
+             setSelectedUserForProfessorManagement(null);
+             await loadData(); // Refresh data to show changes in the UI immediately
+         } else {
+             toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
+         }
+     } catch (error: any) {
+         console.error("Errore durante l'aggiornamento dei professori assegnati:", userEmail, assignedEmails, error);
+         toast({
+             variant: "destructive",
+             title: "Errore Aggiornamento",
+             description: `Impossibile aggiornare i professori assegnati. Errore: ${error.message || String(error)}`,
+         });
+     } finally {
+         setIsLoading(false);
+     }
+ };
 
 // Updated function to open the dialog for ANY user (student or professor)
 const openManageProfessorsDialog = (user: DisplayUser) => {
@@ -393,6 +304,10 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
     setIsManageProfessorsDialogOpen(true);
 };
 
+ // Display loading indicator
+ if (isLoading) {
+   return <div className="flex justify-center items-center h-screen"><p>Caricamento dati...</p></div>;
+ }
 
   return (
     <>
@@ -403,13 +318,11 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
           <CardDescription>Gestisci registrazioni utenti, disponibilità aule e visualizza le prenotazioni.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
-          {/* Use w-full or responsive width */}
-          {/* Update grid-cols to accommodate new days */}
           <Tabs defaultValue="classrooms" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3"> {/* Kept 3 cols, tabs fit */}
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
               <TabsTrigger value="classrooms">Aule</TabsTrigger>
               <TabsTrigger value="users">Utenti</TabsTrigger>
-              <TabsTrigger value="bookings">Prenotazioni</TabsTrigger> {/* New Tab */}
+              <TabsTrigger value="bookings">Prenotazioni</TabsTrigger>
             </TabsList>
             <TabsContent value="classrooms">
               <Card>
@@ -423,14 +336,12 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                              <TableHeader>
                                  <TableRow>
                                      <TableHead className="min-w-[80px] w-24 sticky left-0 bg-background z-10">Ora</TableHead>
-                                     {/* Map over days */}
                                      {days.map((day) => (
                                          <TableHead key={day} colSpan={classrooms.length} className="text-center border-l border-r min-w-[400px] w-96">{day}</TableHead>
                                      ))}
                                  </TableRow>
                                  <TableRow>
                                      <TableHead className="sticky left-0 bg-background z-10">Aula</TableHead>
-                                     {/* Repeat classroom headers for each day */}
                                      {days.map((day) =>
                                         classrooms.map((classroom) => (
                                             <TableHead key={`${day}-${classroom}`} className="min-w-[200px] w-48 border-l text-center">{classroom}</TableHead>
@@ -442,28 +353,22 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                  {timeSlots.map((time) => (
                                      <TableRow key={time}>
                                          <TableCell className="font-medium sticky left-0 bg-background z-10">{time}</TableCell>
-                                         {/* Map over days and classrooms */}
                                          {days.map((day) => {
                                             return classrooms.map((classroom) => {
                                                 const scheduleKey = `${day}-${time}-${classroom}`;
                                                 const assignment = schedule[scheduleKey];
-                                                const assignedProfessor = assignment?.professor || ''; // Default to empty string if no assignment or no professor
-                                                // Determine the color based on the assigned professor
+                                                const assignedProfessor = assignment?.professor || '';
                                                 const professorColorClass = assignedProfessor ? getProfessorColor(assignedProfessor, professors) : '';
                                                 return (
                                                     <TableCell
                                                         key={scheduleKey}
-                                                        className={cn(
-                                                            'border-l',
-                                                            professorColorClass // Apply the specific professor's color
-                                                        )}
+                                                        className={cn('border-l', professorColorClass)}
                                                     >
                                                         <Select
-                                                            value={assignedProfessor || 'unassigned'} // Ensure value corresponds to an item or 'unassigned'
+                                                            value={assignedProfessor || 'unassigned'}
                                                             onValueChange={(value) => handleProfessorAssignmentChange(day, time, classroom, value)}
                                                         >
                                                             <SelectTrigger className="w-full">
-                                                                {/* Display professor email or placeholder */}
                                                                 <SelectValue placeholder="Assegna Professore">
                                                                     {assignedProfessor || "Assegna"}
                                                                 </SelectValue>
@@ -514,8 +419,8 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                              <TableCell>{reg.role === 'professor' ? 'Professore' : 'Studente'}</TableCell>
                                              <TableCell>{reg.email}</TableCell>
                                              <TableCell className="flex flex-wrap gap-2">
-                                                 <Button onClick={() => approveRegistration(reg.email)} size="sm">Approva</Button>
-                                                 <Button onClick={() => rejectRegistration(reg.email)} variant="destructive" size="sm">Rifiuta</Button>
+                                                 <Button onClick={() => approveRegistration(reg.email)} size="sm" disabled={isLoading}>Approva</Button>
+                                                 <Button onClick={() => rejectRegistration(reg.email)} variant="destructive" size="sm" disabled={isLoading}>Rifiuta</Button>
                                              </TableCell>
                                          </TableRow>
                                      ))}
@@ -550,21 +455,19 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                      {approvedUsers.map((user) => (
                                          <TableRow key={`approved-${user.id}`}>
                                              <TableCell>{user.name}</TableCell>
-                                             {/* Correctly display role */}
                                              <TableCell>{user.role.charAt(0).toUpperCase() + user.role.slice(1)}</TableCell>
                                              <TableCell>{user.email}</TableCell>
                                              <TableCell>
-                                                {/* Display assigned professors for both students and professors */}
                                                  {(user.assignedProfessorEmails && user.assignedProfessorEmails.length > 0)
                                                      ? user.assignedProfessorEmails.join(', ')
                                                      : 'Nessuno'}
                                              </TableCell>
                                              <TableCell>
-                                                {/* Action Button Cell - Enable for both students and professors */}
                                                 <Button
                                                     onClick={() => openManageProfessorsDialog(user)}
                                                     size="sm"
                                                     variant="outline"
+                                                    disabled={isLoading}
                                                 >
                                                     Gestisci Professori
                                                 </Button>
@@ -580,7 +483,6 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                  </CardContent>
              </Card>
             </TabsContent>
-            {/* Updated Bookings Tab Content */}
             <TabsContent value="bookings">
                  <Card>
                      <CardHeader>
@@ -595,7 +497,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                          <TableRow>
                                              <TableHead>Data</TableHead>
                                              <TableHead>Ora</TableHead>
-                                             <TableHead>Aula</TableHead> {/* Added Classroom Header */}
+                                             <TableHead>Aula</TableHead>
                                              <TableHead>Professore</TableHead>
                                              <TableHead>Studente/Professore</TableHead>
                                              <TableHead>Ora Prenotazione</TableHead>
@@ -606,7 +508,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                              <TableRow key={`booked-${slot.id}`}>
                                                  <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                                                  <TableCell>{slot.time}</TableCell>
-                                                 <TableCell>{slot.classroom}</TableCell> {/* Display Classroom */}
+                                                 <TableCell>{slot.classroom}</TableCell>
                                                  <TableCell>{slot.professorEmail}</TableCell>
                                                  <TableCell>{slot.bookedBy}</TableCell>
                                                  <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm', { locale: it }) : 'N/A'}</TableCell>
@@ -634,8 +536,9 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                 setSelectedUserForProfessorManagement(null);
             }}
             user={selectedUserForProfessorManagement}
-            allProfessors={professors} // Pass the list of all approved professors
-            onSave={handleSaveUserProfessors} // Use the updated save handler
+            allProfessors={professors}
+            onSave={handleSaveUserProfessors}
+            isLoading={isLoading} // Pass loading state
         />
     )}
     </>

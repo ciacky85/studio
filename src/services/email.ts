@@ -22,11 +22,12 @@ export interface EmailDetails {
 }
 
 // Configure Nodemailer transporter using environment variables
+// Ensure EMAIL_USER and EMAIL_PASS are set in your .env file
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Use Gmail service
+  service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER, // Your Gmail address from .env
-    pass: process.env.EMAIL_PASS, // Your Gmail App Password from .env
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS, // Use the App Password generated from Google Account settings
   },
 });
 
@@ -38,24 +39,18 @@ const transporter = nodemailer.createTransport({
  */
 export async function sendEmail(emailDetails: EmailDetails): Promise<void> {
   const mailOptions = {
-    // Update the from field to include the display name
-    from: `"Singin' is the present" <${process.env.EMAIL_USER}>`, // Sender address with display name
-    to: emailDetails.to, // List of receivers
-    subject: emailDetails.subject, // Subject line
-    html: emailDetails.html, // HTML body
+    from: `"Creative Academy Booking" <${process.env.EMAIL_USER}>`, // Sender address with display name
+    to: emailDetails.to,
+    subject: emailDetails.subject,
+    html: emailDetails.html,
   };
 
   try {
     const info = await transporter.sendMail(mailOptions);
     console.log('Email inviata con successo:', info.messageId);
-    // console.log("Anteprima URL: %s", nodemailer.getTestMessageUrl(info)); // Uncomment for ethereal.email testing
   } catch (error) {
     console.error('Errore durante l\'invio dell\'email:', error);
-    // Re-throw the error or handle it as needed for application flow
-    // For example, you might want to show a specific error message to the user
-    // depending on the context where sendEmail is called.
-    // For now, we just log it server-side and let the calling function handle UI feedback.
+    // Consider how to handle email sending errors - maybe retry or log differently
     throw new Error(`Impossibile inviare l'email a ${emailDetails.to}. Errore: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-

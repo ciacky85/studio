@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import {useState, useEffect} from 'react';
@@ -10,7 +9,14 @@ import {Button} from '@/components/ui/button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
 import {Input} from '@/components/ui/input';
 import Link from 'next/link';
-import {useRouter, usePathname} from 'next/navigation'; // Import usePathname
+import {useRouter, usePathname} from 'next/navigation';
+import { readData } from '@/services/data-storage'; // Import data storage service
+import type { UserData } from '@/types/user'; // Import UserData type
+import type { AllUsersData } from '@/types/app-data'; // Import AllUsersData type
+
+// Constants for filenames and keys
+const USERS_DATA_FILE = 'users'; // Stores all users
+const LOGGED_IN_USER_KEY = 'loggedInUser'; // Keep using localStorage for session state
 
 export default function Home() {
   const [role, setRole] = useState<'admin' | 'professor' | 'student' | null>(null);
@@ -18,19 +24,19 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const router = useRouter();
-  const pathname = usePathname(); // Get current pathname
+  const pathname = usePathname();
 
-  // Function to check login status and update role state
+  // Function to check login status from localStorage and update role state
   const checkLoginAndSetRole = () => {
      if (typeof window !== 'undefined') {
-       const storedUser = localStorage.getItem('loggedInUser');
-       if (storedUser) {
+       const storedUserSession = localStorage.getItem(LOGGED_IN_USER_KEY);
+       if (storedUserSession) {
          try {
-           const userData = JSON.parse(storedUser);
-           setRole(userData.role);
+           const userSessionData = JSON.parse(storedUserSession);
+           setRole(userSessionData.role);
          } catch (e) {
-           console.error("Errore durante il parsing dei dati utente memorizzati:", e);
-           localStorage.removeItem('loggedInUser'); // Clear invalid data
+           console.error("Errore durante il parsing dei dati di sessione:", e);
+           localStorage.removeItem(LOGGED_IN_USER_KEY); // Clear invalid data
            setRole(null);
          }
        } else {
@@ -42,9 +48,9 @@ export default function Home() {
    useEffect(() => {
      checkLoginAndSetRole(); // Check on initial load
 
-     // Listen for storage changes to update UI if logged in/out from another tab
+     // Listen for storage changes (for session state)
      const handleStorageChange = (event: StorageEvent) => {
-        if (event.key === 'loggedInUser' || event.key === null) { // Also update if storage is cleared
+        if (event.key === LOGGED_IN_USER_KEY || event.key === null) {
              checkLoginAndSetRole();
         }
      };
@@ -55,72 +61,66 @@ export default function Home() {
 
    // Re-check role if the path changes back to '/' (e.g., after logout)
    useEffect(() => {
-        if (pathname === '/') { // Check specifically if the current path is the root
+        if (pathname === '/') {
             checkLoginAndSetRole();
         }
-   }, [pathname]); // Add pathname as dependency
+   }, [pathname]);
 
 
-  const handleLogin = () => {
-    setLoginError(null); // Clear any previous error
+  const handleLogin = async () => {
+    setLoginError(null);
 
-    // Declare variables outside the if block
     let userFound = false;
     let correctPassword = false;
     let userRole: 'admin' | 'professor' | 'student' | null = null;
     let userApproved = false;
 
-    if (typeof window !== 'undefined') {
-      // Check registered users in localStorage
-      const storedUser = localStorage.getItem(username);
+    // Handle hardcoded admin login first
+    if (username === 'carlo.checchi@gmail.com' && password === '8257619t') {
+        userFound = true;
+        correctPassword = true;
+        userRole = 'admin';
+        userApproved = true; // Hardcoded admin is always approved
+    } else {
+      // Read all users data from the file
+      const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+      const userData = allUsers[username]; // Find user by email (username)
 
-
-      // Handle hardcoded admin login first
-      if (username === 'carlo.checchi@gmail.com' && password === '8257619t') {
+      if (userData) {
           userFound = true;
-          correctPassword = true;
-          userRole = 'admin';
-          userApproved = true; // Hardcoded admin is always approved
-      } else if (storedUser) { // Check localStorage for other users
-        try {
-          const userData = JSON.parse(storedUser);
           if (userData.password === password) {
-              userFound = true;
               correctPassword = true;
               userRole = userData.role;
-              // Ensure approved status is checked correctly (true or missing vs explicitly false)
-              userApproved = userData.approved !== false;
+              // Ensure approved status is checked correctly (true or explicitly true vs false/missing)
+               userApproved = userData.approved === true; // Check for explicit true
           } else {
-              userFound = true; // User exists, but password wrong
               correctPassword = false;
           }
-        } catch (error) {
-          console.error("Errore durante il parsing dei dati utente da localStorage:", error);
-          // Treat as invalid login attempt if parsing fails
-        }
-      }
-
-      // Handle login based on findings
-      if (userFound && correctPassword && userApproved) {
-        setRole(userRole);
-        localStorage.setItem('loggedInUser', JSON.stringify({username: username, role: userRole}));
-        // No need to push, role change triggers re-render
-      } else if (userFound && correctPassword && !userApproved) {
-        setLoginError('Account non ancora approvato dall\'amministratore.');
-      } else if (userFound && !correctPassword) {
-        setLoginError('Credenziali non valide.');
-      }
-      else {
-        setLoginError('Credenziali non valide o utente non trovato.');
       }
     }
 
-    // Clear password field on error to allow retries easily, keep username
-    // Now this check can safely access the variables
-    if (!(userFound && correctPassword && userApproved)) { // Clear password if any error occurs or login fails
+    // Handle login based on findings
+    if (userFound && correctPassword && userApproved) {
+        setRole(userRole);
+        // Still use localStorage for the *session* state
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(LOGGED_IN_USER_KEY, JSON.stringify({ username: username, role: userRole }));
+        }
+        // No need to push, role change triggers re-render
+    } else if (userFound && correctPassword && !userApproved) {
+        setLoginError('Account non ancora approvato dall\'amministratore.');
+    } else if (userFound && !correctPassword) {
+        setLoginError('Credenziali non valide.');
+    } else {
+        setLoginError('Credenziali non valide o utente non trovato.');
+    }
+
+    // Clear password field only if login fails or error occurs
+    if (loginError || !(userFound && correctPassword && userApproved)) {
+      // Clear password if any error occurs
       setPassword('');
     }
-  };
+};
 
 
   const renderInterface = () => {
@@ -146,7 +146,7 @@ export default function Home() {
                   type="text"
                   id="username"
                   value={username}
-                  onChange={(e) => { setUsername(e.target.value); setLoginError(null); }} // Clear error on input change
+                  onChange={(e) => { setUsername(e.target.value); setLoginError(null); }}
                   placeholder="tua.email@example.com"
                 />
               </div>
@@ -156,7 +156,7 @@ export default function Home() {
                   type="password"
                   id="password"
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value); setLoginError(null); }} // Clear error on input change
+                  onChange={(e) => { setPassword(e.target.value); setLoginError(null); }}
                 />
               </div>
               {loginError && (
@@ -181,5 +181,3 @@ export default function Home() {
     </>
   );
 }
-
-

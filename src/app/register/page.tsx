@@ -1,3 +1,4 @@
+
 'use client';
 
 import {useState} from 'react';
@@ -7,8 +8,13 @@ import {Input} from '@/components/ui/input';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select';
 import {useRouter} from 'next/navigation';
 import {sendEmail} from '@/services/email'; // Import the email service
+import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 import {useToast} from "@/hooks/use-toast";
-import Link from 'next/link'; // Import Link
+import Link from 'next/link';
+import type { AllUsersData, UserData } from '@/types/app-data'; // Use correct types
+
+// Constants for filenames and keys
+const USERS_DATA_FILE = 'users'; // Stores all users
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -22,7 +28,6 @@ export default function Register() {
   const isFormValid = email && password && role;
 
   const handleRegister = async () => {
-    // Reset status if retrying from error state
     if (registrationStatus === 'error') {
       setRegistrationStatus('idle');
     }
@@ -33,50 +38,58 @@ export default function Register() {
             title: "Informazioni Mancanti",
             description: "Per favore, compila tutti i campi richiesti.",
         });
-        return; // Stop execution if form is invalid
+        return;
     }
 
     setRegistrationStatus('pending');
     try {
+      // Read existing users data
+      const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
 
-      // Check if user already exists in localStorage
-      if (typeof window !== 'undefined') {
-        if (localStorage.getItem(email)) {
-            throw new Error('Utente con questa email già esistente.');
-        }
-
-        // Simulate user creation: Store user data with 'approved: false'
-        localStorage.setItem(email, JSON.stringify({password, role, approved: false}));
-
-        // Send notification email to the admin (replace with actual admin email if needed)
-        // Ensure the admin email is correct and reliable
-        await sendEmail({
-          to: 'carlo.checchi@gmail.com', // Consider making this configurable via environment variables
-          subject: 'Nuova Registrazione Utente in Attesa di Approvazione',
-          html: `<p>Un nuovo utente si è registrato e richiede approvazione:</p><ul><li>Email: ${email}</li><li>Ruolo: ${role}</li></ul><p>Accedi al pannello di amministrazione per approvare o rifiutare.</p>`,
-        });
-
-        setRegistrationStatus('success');
-        toast({
-          title: "Registrazione Inviata",
-          description: "La tua registrazione richiede l'approvazione dell'amministratore. Sarai avvisato una volta approvato.",
-        });
-
-        // Clear form fields after successful submission for better UX
-        setEmail('');
-        setPassword('');
-        setRole('');
-
-        // Redirect to login page after a short delay
-         setTimeout(() => router.push('/'), 3000); // Increased delay
-      } else {
-        // Handle case where localStorage is not available (should not happen in browser)
-        throw new Error('Local storage non disponibile.');
+      // Check if user already exists
+      if (allUsers[email]) {
+          throw new Error('Utente con questa email già esistente.');
       }
+
+      // Prepare new user data
+      const newUser: UserData = {
+          password, // Store password directly (consider hashing in a real app)
+          role: role as 'student' | 'professor', // Cast role
+          approved: false, // New users are not approved by default
+          assignedProfessorEmail: null, // Initialize assigned professors as null
+      };
+
+      // Add the new user to the data structure
+      allUsers[email] = newUser;
+
+      // Write the updated data back to the file
+      await writeData<AllUsersData>(USERS_DATA_FILE, allUsers);
+
+
+      // Send notification email to the admin
+      await sendEmail({
+        to: 'carlo.checchi@gmail.com', // Consider env variable for admin email
+        subject: 'Nuova Registrazione Utente in Attesa di Approvazione',
+        html: `<p>Un nuovo utente si è registrato e richiede approvazione:</p><ul><li>Email: ${email}</li><li>Ruolo: ${role}</li></ul><p>Accedi al pannello di amministrazione per approvare o rifiutare.</p>`,
+      });
+
+      setRegistrationStatus('success');
+      toast({
+        title: "Registrazione Inviata",
+        description: "La tua registrazione richiede l'approvazione dell'amministratore. Sarai avvisato una volta approvato.",
+      });
+
+      // Clear form fields
+      setEmail('');
+      setPassword('');
+      setRole('');
+
+      // Redirect to login after delay
+      setTimeout(() => router.push('/'), 3000);
 
     } catch (error: any) {
       console.error('Registrazione fallita:', error);
-      setRegistrationStatus('error'); // Keep in 'error' state
+      setRegistrationStatus('error');
       toast({
         variant: "destructive",
         title: "Registrazione Fallita",
@@ -87,7 +100,6 @@ export default function Register() {
 
   return (
     <>
-      {/* <ClientHeader /> */} {/* Remove ClientHeader rendering here */}
       <main className="flex flex-grow flex-col items-center justify-center p-4 sm:p-12 md:p-24">
         <Card className="w-full max-w-md p-4">
           <CardHeader>
@@ -102,9 +114,9 @@ export default function Register() {
                 id="email"
                 placeholder="esempio@esempio.com"
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); if (registrationStatus === 'error') setRegistrationStatus('idle');}} // Reset from error on input change
-                disabled={registrationStatus === 'pending' || registrationStatus === 'success'} // Disable on pending/success
-                required // Added HTML5 validation
+                onChange={(e) => { setEmail(e.target.value); if (registrationStatus === 'error') setRegistrationStatus('idle');}}
+                disabled={registrationStatus === 'pending' || registrationStatus === 'success'}
+                required
               />
             </div>
             <div className="grid gap-2">
@@ -113,18 +125,18 @@ export default function Register() {
                 type="password"
                 id="password"
                 value={password}
-                onChange={(e) => { setPassword(e.target.value); if (registrationStatus === 'error') setRegistrationStatus('idle');}} // Reset from error on input change
-                disabled={registrationStatus === 'pending' || registrationStatus === 'success'} // Disable on pending/success
-                required // Added HTML5 validation
+                onChange={(e) => { setPassword(e.target.value); if (registrationStatus === 'error') setRegistrationStatus('idle');}}
+                disabled={registrationStatus === 'pending' || registrationStatus === 'success'}
+                required
               />
             </div>
             <div className="grid gap-2">
               <label htmlFor="role">Ruolo</label>
               <Select
-                onValueChange={(value) => { setRole(value as 'student' | 'professor'); if (registrationStatus === 'error') setRegistrationStatus('idle');}} // Reset from error on input change
-                value={role} // Ensure value is controlled
-                disabled={registrationStatus === 'pending' || registrationStatus === 'success'} // Disable on pending/success
-                required // Added HTML5 validation
+                onValueChange={(value) => { setRole(value as 'student' | 'professor'); if (registrationStatus === 'error') setRegistrationStatus('idle');}}
+                value={role}
+                disabled={registrationStatus === 'pending' || registrationStatus === 'success'}
+                required
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Seleziona Ruolo" />
@@ -140,14 +152,14 @@ export default function Register() {
              )}
             <Button
               onClick={handleRegister}
-              disabled={!isFormValid || registrationStatus === 'pending' || registrationStatus === 'success'} // Also disable on success to prevent double submission
+              disabled={!isFormValid || registrationStatus === 'pending' || registrationStatus === 'success'}
             >
               {registrationStatus === 'pending'
                 ? 'Registrazione...'
                 : registrationStatus === 'success'
                 ? 'Inviato!'
                 : registrationStatus === 'error'
-                ? 'Riprova Registrazione' // Changed text for clarity
+                ? 'Riprova Registrazione'
                 : 'Registrati'}
             </Button>
             <Link href="/" className="w-full">

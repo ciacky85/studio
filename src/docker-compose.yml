@@ -1,0 +1,16 @@
+
+version: '3.8'
+
+services:
+  classroom-scheduler:
+    build: .
+    container_name: classroom-scheduler-app
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+    env_file:
+      - .env
+    volumes: # Add volume mapping here
+      - ./config:/app/config # Map local ./config to /app/config inside the container
+    restart: unless-stopped

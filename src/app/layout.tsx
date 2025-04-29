@@ -1,3 +1,4 @@
+
 import type {Metadata} from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -16,8 +17,8 @@ const geistMono = Geist_Mono({
 
 // Metadata remains in the Server Component (layout.tsx)
 export const metadata: Metadata = {
-  title: 'Gestore Orario Aule',
-  description: 'Generato da Firebase Studio',
+  title: 'Creative Academy Booking', // Updated Title
+  description: 'Gestore Orario Aule - Generato da Firebase Studio. Data is stored in the /config directory.', // Added note about data storage
 };
 
 export default function RootLayout({

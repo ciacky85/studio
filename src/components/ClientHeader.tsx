@@ -3,92 +3,75 @@
 
 import {Button} from '@/components/ui/button';
 import Link from 'next/link';
-import {useRouter, usePathname} from 'next/navigation'; // Correct import
-import {useEffect, useState, useCallback} from 'react'; // Added useCallback
+import {useRouter, usePathname} from 'next/navigation';
+import {useEffect, useState, useCallback} from 'react';
+
+const LOGGED_IN_USER_KEY = 'loggedInUser'; // Session key remains in localStorage
 
 const ClientHeader = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | undefined>(undefined); // Initialize as undefined
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | undefined>(undefined);
   const router = useRouter();
   const pathname = usePathname();
 
-  // Function to check login status and update state
+  // Function to check login status based on localStorage session key
   const checkLoginStatus = useCallback(() => {
-    // Ensure this runs only client-side
     if (typeof window !== 'undefined') {
-      const storedUser = localStorage.getItem('loggedInUser');
-      const loggedIn = !!storedUser;
-      // Only update state if it has changed to avoid unnecessary re-renders
-      // Use functional update to safely get previous state
+      const storedUserSession = localStorage.getItem(LOGGED_IN_USER_KEY);
+      const loggedIn = !!storedUserSession;
       setIsLoggedIn(prev => (prev !== loggedIn ? loggedIn : prev));
     } else {
-      // Set to false during SSR or if window is not available yet
-       setIsLoggedIn(false); // Or keep undefined until client check runs? Setting false assumes not logged in initially server-side.
+       setIsLoggedIn(false);
     }
-  }, []); // No dependencies needed for useCallback here
+  }, []);
 
 
-  // Effect for initial check and storage events
+  // Effect for initial check and storage events (for session key)
   useEffect(() => {
-    checkLoginStatus(); // Check immediately on mount
+    checkLoginStatus();
 
     const handleStorageChange = (event: StorageEvent) => {
-      // Check if the change happened on the 'loggedInUser' key or if storage was cleared
-      if (event.key === 'loggedInUser' || event.key === null) {
+      if (event.key === LOGGED_IN_USER_KEY || event.key === null) {
         checkLoginStatus();
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
-
-    // Cleanup listener on component unmount
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [checkLoginStatus]); // Depend on the stable checkLoginStatus function
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [checkLoginStatus]);
 
   // Effect for path changes
   useEffect(() => {
-    // Check status whenever the path changes to handle SPA navigation
     checkLoginStatus();
-  }, [pathname, checkLoginStatus]); // Depend on pathname and the stable checkLoginStatus
+  }, [pathname, checkLoginStatus]);
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('loggedInUser');
-      setIsLoggedIn(false); // Update state immediately
-      router.replace('/'); // Redirect to login page using replace to prevent back navigation to logged-in state
-      // No need to manually setRole to null here, the page component's useEffect will handle it
+      localStorage.removeItem(LOGGED_IN_USER_KEY); // Remove only session key
+      setIsLoggedIn(false);
+      router.replace('/'); // Redirect to login page
     }
   };
 
-  // Determine if on an authentication page AFTER state is determined
+  // Determine if on an auth page AFTER state is determined
   const isOnAuthPage = pathname === '/' || pathname === '/register';
 
-  // Avoid rendering anything until login status is determined client-side
+  // Avoid rendering until login status is determined client-side
    if (isLoggedIn === undefined) {
-        // Render an empty header or a placeholder matching height to prevent layout shift
-       return <header className="flex justify-end p-4 sticky top-0 z-50 bg-background border-b h-[57px]"></header>; // Adjust height as needed
+       return <header className="flex justify-end p-4 sticky top-0 z-50 bg-background border-b h-[57px]"></header>;
    }
 
 
   return (
-    // Added min-height to match button height + padding, preventing layout shift
     <header className="flex justify-end p-4 sticky top-0 z-50 bg-background border-b min-h-[57px] items-center">
       {isLoggedIn ? (
-        // User is logged in, show Logout button
         <Button onClick={handleLogout} variant="outline">Logout</Button>
       ) : !isOnAuthPage ? (
-        // User is not logged in AND not on an auth page, show Login button
         <Link href="/">
           <Button variant="outline">Login</Button>
         </Link>
-      ) : (
-        // User is not logged in AND is on an auth page (login or register), show nothing
-        null
-      )}
+      ) : null}
     </header>
   );
 };
 
 export default ClientHeader;
-
