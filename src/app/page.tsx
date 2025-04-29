@@ -12,7 +12,7 @@ import Link from 'next/link';
 import {useRouter, usePathname} from 'next/navigation';
 import { readData } from '@/services/data-storage'; // Import data storage service
 import type { UserData } from '@/types/user'; // Import UserData type
-import type { AllUsersData } from '@/types/app-data'; // Import AllUsersData type
+import type { AllUsersData } from '@/types/app-data'; // Correct import path for AllUsersData
 
 // Constants for filenames and keys
 const USERS_DATA_FILE = 'users'; // Stores all users
@@ -115,6 +115,7 @@ export default function Home() {
         setLoginError('Credenziali non valide o utente non trovato.');
     }
 
+
     // Clear password field only if login fails or error occurs
     if (loginError || !(userFound && correctPassword && userApproved)) {
       // Clear password if any error occurs
@@ -181,3 +182,4 @@ export default function Home() {
     </>
   );
 }
+
