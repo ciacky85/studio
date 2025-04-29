@@ -11,7 +11,7 @@ import {sendEmail} from '@/services/email'; // Import the email service
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 import {useToast} from "@/hooks/use-toast";
 import Link from 'next/link';
-import type { AllUsersData, UserData } from '@/types/app-data'; // Use correct types
+import type { UserData, AllUsersData } from '@/types/user'; // Use correct types from user.d.ts
 
 // Constants for filenames and keys
 const USERS_DATA_FILE = 'users'; // Stores all users
@@ -52,14 +52,17 @@ export default function Register() {
       }
 
       // Prepare new user data
+      // IMPORTANT: Hash passwords in a real application!
       const newUser: UserData = {
-          password, // Store password directly (consider hashing in a real app)
-          role: role as 'student' | 'professor', // Cast role
-          approved: false, // New users are not approved by default
+          // email: email, // This field does not exist in UserData type
+          password: password, // Store plain text password (INSECURE for real apps)
+          role: role as 'student' | 'professor', // Cast role after validation
+          approved: false, // Default to not approved
           assignedProfessorEmail: null, // Initialize assigned professors as null
       };
 
-      // Add the new user to the data structure
+
+      // Add the new user to the data structure using email as the key
       allUsers[email] = newUser;
 
       // Write the updated data back to the file
