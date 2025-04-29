@@ -8,3 +8,10 @@ export interface UserData {
   // Add other user-specific properties if needed, e.g., name, registration date etc.
   // Example: name?: string;
 }
+
+// Structure for storing all user data (indexed by email)
+// Added here to resolve persistent compilation errors, even though conceptually
+// it might belong in app-data.d.ts
+export interface AllUsersData {
+  [email: string]: UserData;
+}
