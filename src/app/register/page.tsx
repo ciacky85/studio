@@ -54,7 +54,7 @@ export default function Register() {
       // Prepare new user data
       // IMPORTANT: Hash passwords in a real application!
       const newUser: UserData = {
-          // email: email, // This field does not exist in UserData type
+          // email: email, // This field does not exist in UserData type - REMOVED
           password: password, // Store plain text password (INSECURE for real apps)
           role: role as 'student' | 'professor', // Cast role after validation
           approved: false, // Default to not approved
