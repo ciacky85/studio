@@ -11,7 +11,7 @@ import {Input} from '@/components/ui/input';
 import Link from 'next/link';
 import {useRouter, usePathname} from 'next/navigation';
 import { readData } from '@/services/data-storage'; // Import data storage service
-import type { UserData } from '@/types/user'; // Import UserData type
+import type { UserData } from '@/types/user'; // Keep UserData import from here if needed, or move it too
 import type { AllUsersData } from '@/types/app-data'; // Correct import path for AllUsersData
 
 // Constants for filenames and keys
