@@ -12,8 +12,9 @@ import Link from 'next/link';
 import {useRouter, usePathname} from 'next/navigation';
 import { readData } from '@/services/data-storage';
 // Correctly import types from their respective files
-import type { AllUsersData } from '@/types/app-data';
-import type { UserData } from '@/types/user';
+// Try importing BOTH types from app-data.d.ts
+import type { AllUsersData, UserData } from '@/types/app-data'; // Consolidated import
+
 
 // Constants for filenames and keys
 const USERS_DATA_FILE = 'users'; // Stores all users
@@ -86,7 +87,7 @@ export default function Home() {
       // Read all users data from the file
       // Explicitly type allUsers with the correctly imported AllUsersData
       const allUsers: AllUsersData = await readData<AllUsersData>(USERS_DATA_FILE, {});
-      const userData = allUsers[username]; // Find user by email (username)
+      const userData: UserData | undefined = allUsers[username]; // Find user by email (username)
 
       if (userData) {
           userFound = true;
@@ -184,3 +185,4 @@ export default function Home() {
     </>
   );
 }
+
