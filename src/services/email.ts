@@ -2,6 +2,7 @@
 'use server';
 
 import nodemailer from 'nodemailer';
+import { logError } from '@/services/logging'; // Import the error logging service
 
 /**
  * Represents the details required to send an email.
@@ -48,6 +49,7 @@ try {
     transporter.verify(function(error, success) {
       if (error) {
         console.error('Errore configurazione transporter Nodemailer:', error);
+        logError(error, 'Email Transporter Verification'); // Log verification error
         transporter = null; // Set transporter to null if verification fails
       } else {
         console.log('Server Nodemailer pronto per ricevere messaggi');
@@ -56,6 +58,7 @@ try {
   }
 } catch (initError) {
   console.error('Errore durante l\'inizializzazione del transporter Nodemailer:', initError);
+  logError(initError, 'Email Transporter Initialization'); // Log initialization error
   transporter = null; // Ensure transporter is null if init fails
 }
 
@@ -69,7 +72,9 @@ try {
 export async function sendEmail(emailDetails: EmailDetails): Promise<void> {
   // Check if transporter is initialized and environment variables are set
   if (!transporter || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-     console.error('Invio email saltato: Transporter non inizializzato o credenziali mancanti.');
+     const errorMsg = 'Invio email saltato: Transporter non inizializzato o credenziali mancanti.';
+     console.error(errorMsg);
+     await logError(errorMsg, 'Send Email (Pre-check)'); // Log the configuration error
      // Decide how to handle this: throw an error or return silently?
      // Throwing makes the calling function aware of the failure.
      throw new Error('Configurazione email non valida o mancante.');
@@ -90,7 +95,9 @@ export async function sendEmail(emailDetails: EmailDetails): Promise<void> {
     console.log(`Email inviata con successo a ${emailDetails.to}. Message ID: ${info.messageId}`); // Log success
   } catch (error) {
     console.error(`Errore durante l'invio dell'email a ${emailDetails.to}:`, error instanceof Error ? error.stack : error); // Log detailed error and stack trace
+    await logError(error, `Send Email (To: ${emailDetails.to})`); // Log the sending error
     // Consider how to handle email sending errors - maybe retry or log differently
     throw new Error(`Impossibile inviare l'email a ${emailDetails.to}. Errore: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+

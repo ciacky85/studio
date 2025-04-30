@@ -24,6 +24,7 @@ import type { BookableSlot, ScheduleAssignment } from '@/types/schedule'; // Imp
 import type { AllProfessorAvailability, ClassroomSchedule } from '@/types/app-data'; // Import app data types
 import { it } from 'date-fns/locale';
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
+import { logError } from '@/services/logging'; // Import the error logging service
 
 // Constants for filenames
 const USERS_DATA_FILE = 'users';
@@ -135,6 +136,7 @@ export function AdminInterface() {
 
     } catch (error) {
         console.error("[Admin] Failed to load data:", error);
+        await logError(error, 'Admin Load Data'); // Log error to file
         toast({ variant: "destructive", title: "Errore Caricamento Dati", description: "Impossibile caricare i dati dell'applicazione." });
         // Set default empty states on error
         setPendingRegistrations([]);
@@ -160,8 +162,9 @@ export function AdminInterface() {
         console.log("[Admin] Schedule changed, attempting to save...");
         writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, schedule)
           .then(() => console.log("[Admin] Schedule saved successfully."))
-          .catch(err => {
+          .catch(async (err) => { // Make async to use await
             console.error("[Admin] Failed to save schedule:", err);
+            await logError(err, 'Admin Save Schedule'); // Log error to file
             toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario delle aule." });
         });
      } else if (!isLoading && Object.keys(schedule).length === 0) {
@@ -174,14 +177,18 @@ export function AdminInterface() {
                 console.log("[Admin] Existing schedule was not empty, saving empty schedule...");
                 writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {})
                   .then(() => console.log("[Admin] Empty schedule saved successfully."))
-                  .catch(err => {
+                  .catch(async (err) => { // Make async to use await
                    console.error("[Admin] Failed to save empty schedule:", err);
+                   await logError(err, 'Admin Save Empty Schedule'); // Log error to file
                     toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario delle aule." });
                 });
             } else {
                 console.log("[Admin] Existing schedule was already empty, no save needed.");
             }
-        }).catch(err => console.error("[Admin] Error reading schedule before saving empty:", err)); // Log read error
+        }).catch(async (err) => { // Make async to use await
+            console.error("[Admin] Error reading schedule before saving empty:", err);
+            await logError(err, 'Admin Read Schedule Before Empty Save'); // Log error to file
+        });
      }
   }, [schedule, isLoading, toast]); // Include isLoading and toast
 
@@ -204,13 +211,24 @@ export function AdminInterface() {
             console.log("[Admin] Users data updated and saved.");
 
             // Send approval email
-            console.log(`[Admin] Sending approval email to ${email}...`);
-            await sendEmail({
-                to: email,
-                subject: 'Registrazione Approvata',
-                html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
-            });
-            console.log(`[Admin] Approval email sent to ${email}.`);
+            try {
+              console.log(`[Admin] Sending approval email to ${email}...`);
+              await sendEmail({
+                  to: email,
+                  subject: 'Registrazione Approvata',
+                  html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
+              });
+              console.log(`[Admin] Approval email sent to ${email}.`);
+            } catch (emailError) {
+              console.error(`[Admin] Failed to send approval email to ${email}, but registration was approved:`, emailError);
+              await logError(emailError, `Admin Approve Registration (Email to ${email})`);
+              toast({
+                  title: "Registrazione Approvata (con avviso)",
+                  description: `La registrazione per ${email} è stata approvata, ma c'è stato un problema nell'invio dell'email di notifica.`,
+              });
+              // Continue despite email error
+            }
+
 
             toast({
                 title: "Registrazione Approvata",
@@ -223,11 +241,12 @@ export function AdminInterface() {
             toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
         }
     } catch (error: any) {
-        console.error(`[Admin] Errore durante l'approvazione per ${email}:`, error instanceof Error ? error.stack : error);
+        console.error(`[Admin] Errore durante l'approvazione per ${email}:`, error);
+        await logError(error, `Admin Approve Registration (Main Catch - ${email})`); // Log error to file
         toast({
             variant: "destructive",
             title: "Errore Approvazione Registrazione",
-            description: `Impossibile approvare la registrazione per ${email}. Controlla la console per dettagli.`,
+            description: `Impossibile approvare la registrazione per ${email}. Controlla errors.log per dettagli.`,
             // description: `Impossibile approvare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
         });
     } finally {
@@ -264,6 +283,7 @@ const rejectRegistration = async (email: string) => {
                console.log(`[Admin] Rejection email sent to ${email}.`);
              } catch (emailError: any) {
                 console.error(`[Admin] Errore invio email di rifiuto a ${email}:`, emailError);
+                await logError(emailError, `Admin Reject Registration (Email to ${email})`); // Log error
                  // Optionally notify admin about email failure, but proceed with rejection
                  toast({ title: "Avviso", description: `Registrazione rifiutata per ${email}, ma errore nell'invio email.` });
              }
@@ -279,11 +299,12 @@ const rejectRegistration = async (email: string) => {
              toast({ variant: "destructive", title: "Errore", description: "Registrazione non trovata o dati utente mancanti." });
         }
     } catch (error: any) {
-        console.error(`[Admin] Errore durante il rifiuto della registrazione per ${email}:`, error instanceof Error ? error.stack : error);
+        console.error(`[Admin] Errore durante il rifiuto della registrazione per ${email}:`, error);
+        await logError(error, `Admin Reject Registration (Main Catch - ${email})`); // Log error
         toast({
             variant: "destructive",
             title: "Errore Rifiuto Registrazione",
-            description: `Impossibile rifiutare la registrazione per ${email}. Controlla la console per dettagli.`,
+            description: `Impossibile rifiutare la registrazione per ${email}. Controlla errors.log per dettagli.`,
             // description: `Impossibile rifiutare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
         });
     } finally {
@@ -346,11 +367,12 @@ const rejectRegistration = async (email: string) => {
              toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
          }
      } catch (error: any) {
-         console.error(`[Admin] Errore durante l'aggiornamento dei professori assegnati per ${userEmail}:`, assignedEmails, error instanceof Error ? error.stack : error);
+         console.error(`[Admin] Errore durante l'aggiornamento dei professori assegnati per ${userEmail}:`, assignedEmails, error);
+         await logError(error, `Admin Save User Professors (${userEmail})`); // Log error
          toast({
              variant: "destructive",
              title: "Errore Aggiornamento",
-             description: `Impossibile aggiornare i professori assegnati. Controlla la console per dettagli.`,
+             description: `Impossibile aggiornare i professori assegnati. Controlla errors.log per dettagli.`,
              // description: `Impossibile aggiornare i professori assegnati. Errore: ${error.message || String(error)}`,
          });
      } finally {

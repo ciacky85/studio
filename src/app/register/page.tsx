@@ -11,7 +11,8 @@ import {sendEmail} from '@/services/email'; // Import the email service
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 import {useToast} from "@/hooks/use-toast";
 import Link from 'next/link';
-import type { UserData, AllUsersData } from '@/types/user'; // Use correct types
+import type { AllUsersData, UserData } from '@/types/user'; // Use correct types
+import { logError } from '@/services/logging'; // Import the error logging service
 
 
 // Constants for filenames and keys
@@ -60,6 +61,7 @@ export default function Register() {
       // Prepare new user data
       // IMPORTANT: Hash passwords in a real application!
       const newUser: UserData = {
+          // email: email, // email is the key, not a property of UserData
           password: password, // Store plain text password (INSECURE for real apps)
           role: role as 'student' | 'professor', // Cast role after validation
           approved: false, // Default to not approved
@@ -78,13 +80,25 @@ export default function Register() {
 
 
       // Send notification email to the admin
-      console.log(`[Register] Sending notification email to admin...`);
-      await sendEmail({
-        to: 'carlo.checchi@gmail.com', // Consider env variable for admin email
-        subject: 'Nuova Registrazione Utente in Attesa di Approvazione',
-        html: `<p>Un nuovo utente si è registrato e richiede approvazione:</p><ul><li>Email: ${email}</li><li>Ruolo: ${role}</li></ul><p>Accedi al pannello di amministrazione per approvare o rifiutare.</p>`,
-      });
-      console.log(`[Register] Admin notification email sent successfully.`);
+      try {
+        console.log(`[Register] Sending notification email to admin...`);
+        await sendEmail({
+          to: 'carlo.checchi@gmail.com', // Consider env variable for admin email
+          subject: 'Nuova Registrazione Utente in Attesa di Approvazione',
+          html: `<p>Un nuovo utente si è registrato e richiede approvazione:</p><ul><li>Email: ${email}</li><li>Ruolo: ${role}</li></ul><p>Accedi al pannello di amministrazione per approvare o rifiutare.</p>`,
+        });
+        console.log(`[Register] Admin notification email sent successfully.`);
+      } catch (emailError) {
+        console.error(`[Register] Failed to send admin notification email, but registration data was saved:`, emailError);
+        await logError(emailError, 'Register (Admin Notification)');
+        // Notify user about successful registration but potential email issue
+        toast({
+            title: "Registrazione Inviata (con avviso)",
+            description: "La tua registrazione è stata salvata ma potrebbe esserci stato un problema nell'invio della notifica all'amministratore.",
+        });
+        // Continue with the success flow despite email error
+      }
+
 
       setRegistrationStatus('success');
       toast({
@@ -101,15 +115,15 @@ export default function Register() {
       // setTimeout(() => router.push('/'), 3000); // Temporarily disable redirect for easier debugging if needed
 
     } catch (error: any) {
-      // Log the detailed error to the server console (visible in Docker logs)
-      // Log the full error object, including stack trace if available
-      console.error('[Register] REGISTRAZIONE FALLITA:', error instanceof Error ? error.stack : error);
+      // Log the detailed error to the server console AND the log file
+      console.error('[Register] REGISTRAZIONE FALLITA:', error);
+      await logError(error, 'Register (Main Catch)'); // Log the error to file
       setRegistrationStatus('error');
       toast({
         variant: "destructive",
         title: "Registrazione Fallita",
         // Provide a more generic message in the UI but log the detail
-        description: "Si è verificato un errore durante la registrazione. Controlla la console del server per i dettagli.",
+        description: `Si è verificato un errore durante la registrazione: ${error?.message ?? 'Errore sconosciuto'}. Controlla errors.log per i dettagli.`,
         // description: error.message || "Si è verificato un errore inaspettato. Per favore riprova.", // Original message
       });
     }

@@ -15,6 +15,7 @@ import { getCalendarLinksFromSlot } from '@/lib/calendar-utils';
 import type { BookableSlot, BookingViewSlot } from '@/types/schedule'; // Import schedule types
 import type { AllUsersData, AllProfessorAvailability } from '@/types/app-data'; // Import app data types
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
+import { logError } from '@/services/logging'; // Import the error logging service
 
 // Constants for filenames
 const USERS_DATA_FILE = 'users';
@@ -47,6 +48,7 @@ export function StudentInterface() {
             }
          } catch (e) {
            console.error("Errore parsing dati sessione:", e);
+           logError(e, 'Student Mount (Parse Session)');
          }
        } else {
          console.log("Nessuna sessione utente trovata.");
@@ -122,6 +124,7 @@ export function StudentInterface() {
 
       } catch (error) {
            console.error("Failed to load slots for student:", error);
+           await logError(error, 'Student Load Slots'); // Log error
            toast({ variant: "destructive", title: "Errore Caricamento Slot", description: "Impossibile caricare gli slot disponibili." });
            setAllAvailableSlots([]);
            setBookedSlots([]);
@@ -190,13 +193,19 @@ export function StudentInterface() {
             try {
               await sendEmail({ to: currentUserEmail, subject: 'Conferma Prenotazione Lezione', html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p><p>Aggiungi al tuo calendario Google: <a href="${addLinkStudent}">Aggiungi al Calendario</a></p>` });
               await sendEmail({ to: slotToBook.professorEmail, subject: 'Nuova Prenotazione Ricevuta', html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dallo studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}.</p><p>Aggiungi al tuo calendario Google: <a href="${addLinkProfessor}">Aggiungi al Calendario</a></p>` });
-            } catch (emailError) { console.error("Errore invio email conferma (studente):", emailError); /* Toast warning? */ }
+            } catch (emailError) {
+                console.error("Errore invio email conferma (studente):", emailError);
+                await logError(emailError, 'Student Book Slot (Email)');
+                /* Toast warning? */
+                toast({ title: "Avviso", description: `Prenotazione effettuata, ma errore nell'invio email.` });
+            }
 
             toast({ title: "Prenotazione Riuscita", description: `Lezione con ${slotToBook.professorEmail} prenotata.` });
             await loadSlots(); // Refresh UI
 
         } catch (error: any) {
              console.error("Errore prenotazione slot:", error);
+             await logError(error, 'Student Book Slot (Main Catch)'); // Log error
              toast({ variant: "destructive", title: "Errore Prenotazione", description: error.message || "Impossibile prenotare lo slot." });
              await loadSlots(); // Refresh UI even on error
         } finally {
@@ -249,7 +258,12 @@ export function StudentInterface() {
                  try {
                    await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Lezione', html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkStudent}">Rimuovi dal Calendario</a></p>` });
                    await sendEmail({ to: slotToCancel.professorEmail, subject: 'Prenotazione Cancellata', html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione dello studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>` });
-                 } catch (emailError) { console.error("Errore invio email cancellazione (studente):", emailError); /* Toast warning? */ }
+                 } catch (emailError) {
+                    console.error("Errore invio email cancellazione (studente):", emailError);
+                    await logError(emailError, 'Student Cancel Booking (Email)');
+                    /* Toast warning? */
+                    toast({ title: "Avviso", description: `Cancellazione effettuata, ma errore nell'invio email.` });
+                 }
 
 
                 toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${slotToCancel.professorEmail} è stata cancellata.` });
@@ -257,6 +271,7 @@ export function StudentInterface() {
 
            } catch (error: any) {
                 console.error("Errore cancellazione prenotazione:", error);
+                await logError(error, 'Student Cancel Booking (Main Catch)'); // Log error
                 toast({ variant: "destructive", title: "Errore Cancellazione", description: error.message || "Impossibile cancellare la prenotazione." });
            } finally {
                 setIsLoading(false);
@@ -403,3 +418,4 @@ export function StudentInterface() {
     </div>
   );
 }
+
