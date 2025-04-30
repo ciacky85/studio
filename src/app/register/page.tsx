@@ -11,7 +11,9 @@ import {sendEmail} from '@/services/email'; // Import the email service
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 import {useToast} from "@/hooks/use-toast";
 import Link from 'next/link';
-import type { UserData, AllUsersData } from '@/types/user'; // Use correct types from user.d.ts
+import type { UserData } from '@/types/user'; // Correct import path for UserData
+import type { AllUsersData } from '@/types/app-data'; // Import AllUsersData from app-data
+
 
 // Constants for filenames and keys
 const USERS_DATA_FILE = 'users'; // Stores all users
@@ -54,7 +56,7 @@ export default function Register() {
       // Prepare new user data
       // IMPORTANT: Hash passwords in a real application!
       const newUser: UserData = {
-          // email: email, // This field does not exist in UserData type - REMOVED
+          // email field removed as it's the key in AllUsersData
           password: password, // Store plain text password (INSECURE for real apps)
           role: role as 'student' | 'professor', // Cast role after validation
           approved: false, // Default to not approved

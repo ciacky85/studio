@@ -1,8 +1,9 @@
 
-import type { UserData } from './user';
+import type { UserData } from './user'; // Ensure UserData is imported
 import type { BookableSlot, ScheduleAssignment } from './schedule'; // Assuming schedule types are defined here or create the file
 
 // Structure for storing all user data (indexed by email)
+// Make sure AllUsersData is exported
 export interface AllUsersData {
   [email: string]: UserData;
 }
