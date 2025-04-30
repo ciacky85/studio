@@ -1,4 +1,3 @@
-
 'use client';
 
 import {useState} from 'react';
@@ -61,7 +60,6 @@ export default function Register() {
       // Prepare new user data
       // IMPORTANT: Hash passwords in a real application!
       const newUser: UserData = {
-          // email: email, // email is the key, not a property of UserData
           password: password, // Store plain text password (INSECURE for real apps)
           role: role as 'student' | 'professor', // Cast role after validation
           approved: false, // Default to not approved
@@ -88,7 +86,7 @@ export default function Register() {
           html: `<p>Un nuovo utente si è registrato e richiede approvazione:</p><ul><li>Email: ${email}</li><li>Ruolo: ${role}</li></ul><p>Accedi al pannello di amministrazione per approvare o rifiutare.</p>`,
         });
         console.log(`[Register] Admin notification email sent successfully.`);
-      } catch (emailError) {
+      } catch (emailError: any) {
         console.error(`[Register] Failed to send admin notification email, but registration data was saved:`, emailError);
         await logError(emailError, 'Register (Admin Notification)');
         // Notify user about successful registration but potential email issue
