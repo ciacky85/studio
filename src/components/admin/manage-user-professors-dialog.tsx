@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { DisplayUser } from '@/types/display-user'; // Import DisplayUser type
+import { cn } from "@/lib/utils"; // Import cn utility
 
 interface ManageUserProfessorsDialogProps {
     isOpen: boolean;
