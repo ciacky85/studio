@@ -11,8 +11,7 @@ import {sendEmail} from '@/services/email'; // Import the email service
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 import {useToast} from "@/hooks/use-toast";
 import Link from 'next/link';
-import type { UserData } from '@/types/user'; // Correct import path for UserData
-import type { AllUsersData } from '@/types/user'; // Use correct types
+import type { UserData, AllUsersData } from '@/types/user'; // Use correct types
 
 
 // Constants for filenames and keys
@@ -44,39 +43,48 @@ export default function Register() {
     }
 
     setRegistrationStatus('pending');
+    console.log(`[Register] Attempting registration for: ${email}, Role: ${role}`);
     try {
       // Read existing users data
+      console.log(`[Register] Reading data from ${USERS_DATA_FILE}...`);
       const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+      console.log(`[Register] Existing user data read successfully.`);
 
       // Check if user already exists
       if (allUsers[email]) {
+          console.warn(`[Register] User already exists: ${email}`);
           throw new Error('Utente con questa email già esistente.');
       }
+      console.log(`[Register] User ${email} does not exist, proceeding.`);
 
       // Prepare new user data
       // IMPORTANT: Hash passwords in a real application!
       const newUser: UserData = {
-          // email field is removed as it's the key in AllUsersData
           password: password, // Store plain text password (INSECURE for real apps)
           role: role as 'student' | 'professor', // Cast role after validation
           approved: false, // Default to not approved
           assignedProfessorEmail: null, // Initialize assigned professors as null
       };
+      console.log(`[Register] New user data prepared for ${email}.`);
 
 
       // Add the new user to the data structure using email as the key
       allUsers[email] = newUser;
 
       // Write the updated data back to the file
+      console.log(`[Register] Writing updated user data to ${USERS_DATA_FILE}...`);
       await writeData<AllUsersData>(USERS_DATA_FILE, allUsers);
+      console.log(`[Register] User data written successfully.`);
 
 
       // Send notification email to the admin
+      console.log(`[Register] Sending notification email to admin...`);
       await sendEmail({
         to: 'carlo.checchi@gmail.com', // Consider env variable for admin email
         subject: 'Nuova Registrazione Utente in Attesa di Approvazione',
         html: `<p>Un nuovo utente si è registrato e richiede approvazione:</p><ul><li>Email: ${email}</li><li>Ruolo: ${role}</li></ul><p>Accedi al pannello di amministrazione per approvare o rifiutare.</p>`,
       });
+      console.log(`[Register] Admin notification email sent successfully.`);
 
       setRegistrationStatus('success');
       toast({
@@ -95,7 +103,7 @@ export default function Register() {
     } catch (error: any) {
       // Log the detailed error to the server console (visible in Docker logs)
       // Log the full error object, including stack trace if available
-      console.error('REGISTRAZIONE FALLITA:', error instanceof Error ? error.stack : error);
+      console.error('[Register] REGISTRAZIONE FALLITA:', error instanceof Error ? error.stack : error);
       setRegistrationStatus('error');
       toast({
         variant: "destructive",

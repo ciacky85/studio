@@ -14,14 +14,14 @@ import {
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 import {sendEmail} from '@/services/email';
 import {useToast} from "@/hooks/use-toast";
-import type { UserData } from '@/types/user';
+import type { UserData, AllUsersData } from '@/types/user';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO } from 'date-fns';
 import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
 import { cn } from "@/lib/utils";
 import type {DisplayUser} from '@/types/display-user';
 import type { BookableSlot, ScheduleAssignment } from '@/types/schedule'; // Import schedule types
-import type { AllUsersData, AllProfessorAvailability, ClassroomSchedule } from '@/types/app-data'; // Import app data types
+import type { AllProfessorAvailability, ClassroomSchedule } from '@/types/app-data'; // Import app data types
 import { it } from 'date-fns/locale';
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 
@@ -36,7 +36,7 @@ const classrooms = ['Aula 1 Grande', 'Aula 2 Piccola'];
 
 // Define a color palette for professors
 const professorColors = [
-  'bg-blue-100 dark:bg-blue-900', 'bg-yellow-100 dark:bg-yellow-900', 'bg-purple-100 dark:bg-purple-900',
+  'bg-blue-100 dark:bg-blue-900', 'bg-green-100 dark:bg-green-900', 'bg-yellow-100 dark:bg-yellow-900', 'bg-purple-100 dark:bg-purple-900',
   'bg-pink-100 dark:bg-pink-900', 'bg-indigo-100 dark:bg-indigo-900', 'bg-teal-100 dark:bg-teal-900',
   'bg-orange-100 dark:bg-orange-900', 'bg-lime-100 dark:bg-lime-900', 'bg-cyan-100 dark:bg-cyan-900',
   'bg-emerald-100 dark:bg-emerald-900',
@@ -45,7 +45,8 @@ const professorColors = [
 // Function to get a color class based on professor email
 const getProfessorColor = (professorEmail: string, allProfessors: string[]): string => {
     const index = allProfessors.indexOf(professorEmail);
-    return index === -1 ? '' : professorColors[index % professorColors.length];
+    // Ensure a default background even if no professor is assigned or found
+    return index === -1 ? 'bg-background' : professorColors[index % professorColors.length];
 };
 
 
@@ -73,11 +74,20 @@ export function AdminInterface() {
 
   // Function to load data from files
   const loadData = useCallback(async () => {
+    console.log("[Admin] Starting data load...");
     setIsLoading(true);
     try {
+      console.log("[Admin] Reading users data...");
       const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+      console.log("[Admin] Users data read.");
+
+      console.log("[Admin] Reading availability data...");
       const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
+      console.log("[Admin] Availability data read.");
+
+      console.log("[Admin] Reading schedule data...");
       const loadedSchedule = await readData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {});
+      console.log("[Admin] Schedule data read.");
 
       const loadedPending: DisplayUser[] = [];
       const loadedApproved: DisplayUser[] = [];
@@ -85,6 +95,7 @@ export function AdminInterface() {
       let idCounter = 1;
 
       // Process Users
+      console.log("[Admin] Processing user data...");
       Object.entries(allUsers).forEach(([email, userData]) => {
          if (userData.role && ['student', 'professor', 'admin'].includes(userData.role) && typeof userData.approved === 'boolean') {
             const name = email.split('@')[0];
@@ -104,8 +115,10 @@ export function AdminInterface() {
       setPendingRegistrations(loadedPending);
       setApprovedUsers(loadedApproved);
       setProfessors(loadedProfessors.sort());
+      console.log(`[Admin] Processed ${loadedPending.length} pending, ${loadedApproved.length} approved users, ${loadedProfessors.length} professors.`);
 
       // Process Booked Slots from Availability Data
+       console.log("[Admin] Processing booked slots...");
        const loadedAllBooked: BookableSlot[] = [];
        Object.values(allAvailability).flat().forEach(slot => {
            if (slot && slot.id && slot.date && slot.time && slot.classroom && slot.bookedBy && slot.professorEmail && slot.duration === 60) {
@@ -113,12 +126,15 @@ export function AdminInterface() {
            }
        });
        setAllBookedSlots(sortSlots(loadedAllBooked));
+        console.log(`[Admin] Processed ${loadedAllBooked.length} booked slots.`);
 
        // Set Schedule
        setSchedule(loadedSchedule);
+       console.log("[Admin] Schedule set.");
+       console.log("[Admin] Data loading complete.");
 
     } catch (error) {
-        console.error("Failed to load data:", error);
+        console.error("[Admin] Failed to load data:", error);
         toast({ variant: "destructive", title: "Errore Caricamento Dati", description: "Impossibile caricare i dati dell'applicazione." });
         // Set default empty states on error
         setPendingRegistrations([]);
@@ -141,83 +157,113 @@ export function AdminInterface() {
   useEffect(() => {
      // Avoid saving during initial load or if schedule hasn't changed meaningfully
      if (!isLoading && Object.keys(schedule).length > 0) {
-        writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, schedule).catch(err => {
-            console.error("Failed to save schedule:", err);
+        console.log("[Admin] Schedule changed, attempting to save...");
+        writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, schedule)
+          .then(() => console.log("[Admin] Schedule saved successfully."))
+          .catch(err => {
+            console.error("[Admin] Failed to save schedule:", err);
             toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario delle aule." });
         });
      } else if (!isLoading && Object.keys(schedule).length === 0) {
         // Handle case where schedule becomes empty after being loaded
         // Check if file exists before attempting to write empty {}
         // This prevents overwriting potentially valid empty data loaded initially
+        console.log("[Admin] Schedule is empty, checking if save is needed...");
         readData(SCHEDULE_DATA_FILE, {}).then(existingSchedule => {
             if (Object.keys(existingSchedule).length > 0) { // Only write if it wasn't already empty
-                writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {}).catch(err => {
-                   console.error("Failed to save empty schedule:", err);
+                console.log("[Admin] Existing schedule was not empty, saving empty schedule...");
+                writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {})
+                  .then(() => console.log("[Admin] Empty schedule saved successfully."))
+                  .catch(err => {
+                   console.error("[Admin] Failed to save empty schedule:", err);
                     toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario delle aule." });
                 });
+            } else {
+                console.log("[Admin] Existing schedule was already empty, no save needed.");
             }
-        }).catch(err => console.error("Error reading schedule before saving empty:", err)); // Log read error
+        }).catch(err => console.error("[Admin] Error reading schedule before saving empty:", err)); // Log read error
      }
   }, [schedule, isLoading, toast]); // Include isLoading and toast
 
   const approveRegistration = async (email: string) => {
+    console.log(`[Admin] Attempting to approve registration for: ${email}`);
     setIsLoading(true); // Indicate loading state
     try {
+        console.log("[Admin] Reading users data for approval...");
         const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+        console.log("[Admin] Users data read for approval.");
         const userData = allUsers[email];
 
         if (userData) {
+            console.log(`[Admin] User data found for ${email}. Setting approved = true.`);
             userData.approved = true;
             userData.assignedProfessorEmail = userData.assignedProfessorEmail || null; // Ensure it's initialized
 
+            console.log("[Admin] Writing updated users data...");
             await writeData<AllUsersData>(USERS_DATA_FILE, allUsers); // Save updated users data
+            console.log("[Admin] Users data updated and saved.");
 
             // Send approval email
+            console.log(`[Admin] Sending approval email to ${email}...`);
             await sendEmail({
                 to: email,
                 subject: 'Registrazione Approvata',
                 html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
             });
+            console.log(`[Admin] Approval email sent to ${email}.`);
 
             toast({
                 title: "Registrazione Approvata",
                 description: `La registrazione per ${email} è stata approvata.`,
             });
+            console.log("[Admin] Approval successful, reloading data...");
             await loadData(); // Refresh all data after successful approval
         } else {
+            console.error(`[Admin] User data not found for approval: ${email}`);
             toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
         }
     } catch (error: any) {
-        console.error("Errore durante l'approvazione per:", email, error);
+        console.error(`[Admin] Errore durante l'approvazione per ${email}:`, error instanceof Error ? error.stack : error);
         toast({
             variant: "destructive",
             title: "Errore Approvazione Registrazione",
-            description: `Impossibile approvare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
+            description: `Impossibile approvare la registrazione per ${email}. Controlla la console per dettagli.`,
+            // description: `Impossibile approvare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
         });
     } finally {
        setIsLoading(false); // Reset loading state
+       console.log(`[Admin] Approval process finished for ${email}.`);
     }
 };
 
 const rejectRegistration = async (email: string) => {
+    console.log(`[Admin] Attempting to reject registration for: ${email}`);
     setIsLoading(true);
     try {
+        console.log("[Admin] Reading users data for rejection...");
         const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+        console.log("[Admin] Users data read for rejection.");
         const registration = pendingRegistrations.find((reg) => reg.email === email); // Check pending state first
 
         if (registration && allUsers[email]) {
+            console.log(`[Admin] Registration found for ${email}. Deleting user data.`);
             delete allUsers[email]; // Remove user from the data object
+
+            console.log("[Admin] Writing updated users data after rejection...");
             await writeData<AllUsersData>(USERS_DATA_FILE, allUsers); // Save the updated data
+            console.log("[Admin] Users data updated and saved after rejection.");
 
             // Send rejection email
              try {
+               console.log(`[Admin] Sending rejection email to ${email}...`);
                await sendEmail({
                  to: email,
                  subject: 'Registrazione Rifiutata',
                  html: '<p>La tua registrazione è stata rifiutata.</p>',
                });
+               console.log(`[Admin] Rejection email sent to ${email}.`);
              } catch (emailError: any) {
-                console.error("Errore invio email di rifiuto:", emailError);
+                console.error(`[Admin] Errore invio email di rifiuto a ${email}:`, emailError);
                  // Optionally notify admin about email failure, but proceed with rejection
                  toast({ title: "Avviso", description: `Registrazione rifiutata per ${email}, ma errore nell'invio email.` });
              }
@@ -226,19 +272,23 @@ const rejectRegistration = async (email: string) => {
                 title: "Registrazione Rifiutata",
                 description: `La registrazione per ${email} è stata rifiutata ed eliminata.`,
             });
+            console.log("[Admin] Rejection successful, reloading data...");
             await loadData(); // Refresh data
         } else {
+             console.error(`[Admin] Registration not found or user data missing for rejection: ${email}`);
              toast({ variant: "destructive", title: "Errore", description: "Registrazione non trovata o dati utente mancanti." });
         }
     } catch (error: any) {
-        console.error("Errore durante il rifiuto della registrazione per:", email, error);
+        console.error(`[Admin] Errore durante il rifiuto della registrazione per ${email}:`, error instanceof Error ? error.stack : error);
         toast({
             variant: "destructive",
             title: "Errore Rifiuto Registrazione",
-            description: `Impossibile rifiutare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
+            description: `Impossibile rifiutare la registrazione per ${email}. Controlla la console per dettagli.`,
+            // description: `Impossibile rifiutare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
         });
     } finally {
         setIsLoading(false);
+        console.log(`[Admin] Rejection process finished for ${email}.`);
     }
 };
 
@@ -253,7 +303,7 @@ const rejectRegistration = async (email: string) => {
   }
 
   const timeSlots = generateTimeSlots();
-  const days = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
+  const days = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']; // Added Saturday and Sunday
 
   const handleProfessorAssignmentChange = (day: string, time: string, classroom: string, professorEmail: string) => {
     const key = `${day}-${time}-${classroom}`;
@@ -261,20 +311,27 @@ const rejectRegistration = async (email: string) => {
         professor: professorEmail === 'unassigned' ? '' : professorEmail
     };
     // Update local state immediately for responsiveness
+    console.log(`[Admin] Assigning slot ${key} to professor: ${newAssignment.professor || 'Unassigned'}`);
     setSchedule(prevSchedule => ({ ...prevSchedule, [key]: newAssignment }));
     // Saving is handled by the useEffect hook watching `schedule`
 };
 
 
  const handleSaveUserProfessors = async (userEmail: string, assignedEmails: string[]) => {
+     console.log(`[Admin] Saving assigned professors for ${userEmail}:`, assignedEmails);
      setIsLoading(true);
      try {
+         console.log("[Admin] Reading users data for professor assignment...");
          const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+         console.log("[Admin] Users data read for professor assignment.");
          const userData = allUsers[userEmail];
 
          if (userData) {
+             console.log(`[Admin] User data found for ${userEmail}. Updating assigned professors.`);
              userData.assignedProfessorEmail = assignedEmails.length > 0 ? assignedEmails : null;
+             console.log("[Admin] Writing updated users data after professor assignment...");
              await writeData<AllUsersData>(USERS_DATA_FILE, allUsers);
+             console.log("[Admin] Users data updated and saved after professor assignment.");
 
              toast({
                  title: "Professori Aggiornati",
@@ -282,24 +339,29 @@ const rejectRegistration = async (email: string) => {
              });
              setIsManageProfessorsDialogOpen(false);
              setSelectedUserForProfessorManagement(null);
+             console.log("[Admin] Professor assignment successful, reloading data...");
              await loadData(); // Refresh data to show changes in the UI immediately
          } else {
+             console.error(`[Admin] User data not found for professor assignment: ${userEmail}`);
              toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
          }
      } catch (error: any) {
-         console.error("Errore durante l'aggiornamento dei professori assegnati:", userEmail, assignedEmails, error);
+         console.error(`[Admin] Errore durante l'aggiornamento dei professori assegnati per ${userEmail}:`, assignedEmails, error instanceof Error ? error.stack : error);
          toast({
              variant: "destructive",
              title: "Errore Aggiornamento",
-             description: `Impossibile aggiornare i professori assegnati. Errore: ${error.message || String(error)}`,
+             description: `Impossibile aggiornare i professori assegnati. Controlla la console per dettagli.`,
+             // description: `Impossibile aggiornare i professori assegnati. Errore: ${error.message || String(error)}`,
          });
      } finally {
          setIsLoading(false);
+         console.log(`[Admin] Professor assignment process finished for ${userEmail}.`);
      }
  };
 
 // Updated function to open the dialog for ANY user (student or professor)
 const openManageProfessorsDialog = (user: DisplayUser) => {
+    console.log(`[Admin] Opening manage professors dialog for user: ${user.email}`);
     setSelectedUserForProfessorManagement(user);
     setIsManageProfessorsDialogOpen(true);
 };
@@ -358,11 +420,11 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                                 const scheduleKey = `${day}-${time}-${classroom}`;
                                                 const assignment = schedule[scheduleKey];
                                                 const assignedProfessor = assignment?.professor || '';
-                                                const professorColorClass = assignedProfessor ? getProfessorColor(assignedProfessor, professors) : '';
+                                                const professorColorClass = assignedProfessor ? getProfessorColor(assignedProfessor, professors) : 'bg-background';
                                                 return (
                                                     <TableCell
                                                         key={scheduleKey}
-                                                        className={cn('border-l', professorColorClass)}
+                                                        className={cn('border-l', professorColorClass)} // Apply color class here
                                                     >
                                                         <Select
                                                             value={assignedProfessor || 'unassigned'}
@@ -532,6 +594,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
         <ManageUserProfessorsDialog
             isOpen={isManageProfessorsDialogOpen}
             onClose={() => {
+                console.log("[Admin] Closing manage professors dialog.");
                 setIsManageProfessorsDialogOpen(false);
                 setSelectedUserForProfessorManagement(null);
             }}
@@ -544,3 +607,4 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
     </>
   );
 }
+
