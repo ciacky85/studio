@@ -12,7 +12,7 @@ import { readData, writeData } from '@/services/data-storage'; // Import data st
 import {useToast} from "@/hooks/use-toast";
 import Link from 'next/link';
 import type { UserData } from '@/types/user'; // Correct import path for UserData
-import type { AllUsersData } from '@/types/app-data'; // Import AllUsersData from app-data
+import type { AllUsersData } from '@/types/app-data'; // Use correct types
 
 
 // Constants for filenames and keys
@@ -56,7 +56,7 @@ export default function Register() {
       // Prepare new user data
       // IMPORTANT: Hash passwords in a real application!
       const newUser: UserData = {
-          // email field removed as it's the key in AllUsersData
+          // email field is removed as it's the key in AllUsersData
           password: password, // Store plain text password (INSECURE for real apps)
           role: role as 'student' | 'professor', // Cast role after validation
           approved: false, // Default to not approved
@@ -90,15 +90,18 @@ export default function Register() {
       setRole('');
 
       // Redirect to login after delay
-      setTimeout(() => router.push('/'), 3000);
+      // setTimeout(() => router.push('/'), 3000); // Temporarily disable redirect for easier debugging if needed
 
     } catch (error: any) {
-      console.error('Registrazione fallita:', error);
+      // Log the detailed error to the server console (visible in Docker logs)
+      console.error('REGISTRAZIONE FALLITA:', error);
       setRegistrationStatus('error');
       toast({
         variant: "destructive",
         title: "Registrazione Fallita",
-        description: error.message || "Si è verificato un errore inaspettato. Per favore riprova.",
+        // Provide a more generic message in the UI but log the detail
+        description: "Si è verificato un errore durante la registrazione. Controlla la console del server per i dettagli.",
+        // description: error.message || "Si è verificato un errore inaspettato. Per favore riprova.", // Original message
       });
     }
   };
@@ -177,3 +180,4 @@ export default function Register() {
     </>
   );
 }
+
