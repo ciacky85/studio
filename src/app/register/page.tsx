@@ -12,7 +12,7 @@ import { readData, writeData } from '@/services/data-storage'; // Import data st
 import {useToast} from "@/hooks/use-toast";
 import Link from 'next/link';
 import type { UserData } from '@/types/user'; // Correct import path for UserData
-import type { AllUsersData } from '@/types/app-data'; // Use correct types
+import type { AllUsersData } from '@/types/user'; // Use correct types
 
 
 // Constants for filenames and keys
@@ -94,7 +94,8 @@ export default function Register() {
 
     } catch (error: any) {
       // Log the detailed error to the server console (visible in Docker logs)
-      console.error('REGISTRAZIONE FALLITA:', error);
+      // Log the full error object, including stack trace if available
+      console.error('REGISTRAZIONE FALLITA:', error instanceof Error ? error.stack : error);
       setRegistrationStatus('error');
       toast({
         variant: "destructive",
