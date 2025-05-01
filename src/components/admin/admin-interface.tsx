@@ -283,9 +283,9 @@ export function AdminInterface() {
 
                // 2. Load current availability data to check existing bookings
                const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
-               const existingGuestBookings = allAvailability["GUEST"] || []; // Bookings made via this interface
+               const existingGuestBookings = allAvailability[GUEST_PROFESSOR_EMAIL] || []; // Use constant
 
-               // 3. Identify potential guest slots from relevant configurations
+               // 3. Identify potential guest slots ONLY from relevant configurations where assigned to GUEST_PROFESSOR_EMAIL
                const potentialGuestAssignments = new Set<string>(); // "HH:MM-Classroom"
 
                relevantConfigs.forEach(config => {
@@ -726,21 +726,22 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
            // --- Double Check Availability ---
            // Ensure the slot is still assigned to guest and not booked in the latest data
             const currentAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
-            const currentGuestBookings = currentAvailability["GUEST"] || [];
+            // Check bookings stored under the GUEST_PROFESSOR_EMAIL key
+            const currentGuestBookings = currentAvailability[GUEST_PROFESSOR_EMAIL] || [];
             const isAlreadyBooked = currentGuestBookings.some(
-                slot => slot.date === formattedDate && slot.time === time && slot.classroom === classroom && slot.bookedBy
+                slot => slot.date === formattedDate && slot.time === time && slot.classroom === classroom && slot.bookedBy?.startsWith('Ospite:')
             );
             if (isAlreadyBooked) {
                 throw new Error("Questo slot per ospiti è stato appena prenotato da qualcun altro.");
             }
-             // Verify it's still a guest slot based on current config
+             // Verify it's still a guest slot based on current active config
             const relevantConfigs = findRelevantConfigurations(singleBookingDate, savedConfigurations);
              const isGuestSlotInConfig = relevantConfigs.some(config => {
                  const key = `${dayOfWeekString}-${time}-${classroom}`;
                  return config.schedule[key]?.professor === GUEST_PROFESSOR_EMAIL;
              });
              if (!isGuestSlotInConfig) {
-                 throw new Error("Questo slot non è più designato per gli ospiti.");
+                 throw new Error("Questo slot non è più designato per gli ospiti secondo le configurazioni attive.");
              }
            // --- End Double Check ---
 
@@ -756,14 +757,13 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
                isAvailable: false, // It's booked now
                bookedBy: `Ospite: ${guestName.trim()}`, // Indicate it's a guest
                bookingTime: new Date().toISOString(),
-               professorEmail: "GUEST", // Special identifier for guest bookings
+               professorEmail: GUEST_PROFESSOR_EMAIL, // Special identifier for guest bookings
            };
 
-           // Add this guest booking to a placeholder professor email in the availability data
-           // We use "GUEST" as the key to store all guest bookings
-           const guestSlots = currentAvailability["GUEST"] || [];
+           // Add this guest booking to the GUEST_PROFESSOR_EMAIL key in availability data
+           const guestSlots = currentAvailability[GUEST_PROFESSOR_EMAIL] || [];
            guestSlots.push(guestBookingSlot);
-           currentAvailability["GUEST"] = sortSlots(guestSlots); // Keep guest slots sorted
+           currentAvailability[GUEST_PROFESSOR_EMAIL] = sortSlots(guestSlots); // Keep guest slots sorted
 
            await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, currentAvailability);
 
@@ -775,7 +775,7 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
            setSelectedGuestSlot(null);
            setGuestName('');
 
-           // Also refresh the main "Booked Slots" list
+           // Also refresh the main "Booked Slots" list shown in the Bookings tab
            setAllBookedSlots(prev => sortSlots([...prev, guestBookingSlot]));
 
 
@@ -784,8 +784,11 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
            await logError(error, 'Admin Guest Booking');
            toast({ variant: "destructive", title: "Errore Prenotazione Ospite", description: `Impossibile creare la prenotazione per l'ospite. ${error instanceof Error ? error.message : ''}` });
             // Refresh guest slots in case the failure was due to availability changing
-           const calculateGuestSlots = async () => { /* ... reuse or refactor logic ... */ }; // Need to recalculate
-           await calculateGuestSlots(); // Trigger recalculation
+           const calculateGuestSlots = async () => {
+               // Trigger recalculation by slightly adjusting dependencies (or refactor to allow direct call)
+               setSingleBookingDate(prevDate => prevDate ? new Date(prevDate) : undefined); // Force re-render and recalculation
+           };
+           await calculateGuestSlots();
        } finally {
            setIsLoading(false);
        }
@@ -1128,7 +1131,7 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
                                         const [time, classroom] = slotKey.split('-');
                                         return (
                                              <div key={slotKey} className="flex items-center space-x-2">
-                                                 <RadioGroupItem value={slotKey} id={`guest-slot-${slotKey}`} />
+                                                 <RadioGroupItem value={slotKey} id={`guest-slot-${slotKey}`} disabled={isLoading} />
                                                  <Label htmlFor={`guest-slot-${slotKey}`}>{time} - {classroom}</Label>
                                              </div>
                                         );
@@ -1251,4 +1254,3 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
     </>
   );
 }
-

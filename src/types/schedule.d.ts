@@ -10,12 +10,12 @@ export interface BookableSlot {
   isAvailable: boolean; // Whether the professor marked it as available
   bookedBy: string | null; // Email of the student or professor who booked, or null
   bookingTime: string | null; // ISO string timestamp of booking, or null
-  professorEmail: string; // Email of the professor offering the slot
+  professorEmail: string; // Email of the professor offering the slot OR 'GUEST'
 }
 
 // Defines the structure for an admin's assignment in the classroom schedule
 export interface ScheduleAssignment {
-  professor: string; // Professor email assigned, or '' if unassigned
+  professor: string; // Professor email assigned, or '' if unassigned, or 'ospite@creativeacademy.it'
 }
 
 // Defines the structure of a slot from the perspective of a user (student/professor) booking it
@@ -30,7 +30,3 @@ export interface BookingViewSlot {
   isBookedByCurrentUser: boolean; // Whether the current logged-in user booked this
   bookingTime: string | null; // Needed for cancellation logic
 }
-
-
-// Potentially add other schedule-related types if needed
-
