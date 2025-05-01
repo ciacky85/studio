@@ -1,7 +1,7 @@
 
 import type {Metadata} from 'next';
 // Remove LayoutProps import from 'next/app' as it's for Pages Router
-// import type { LayoutProps } from 'next/app';
+// import type { LayoutProps } from 'next/app'; 
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
