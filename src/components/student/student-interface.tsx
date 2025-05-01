@@ -7,29 +7,50 @@ import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/compo
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 import {Calendar} from '@/components/ui/calendar';
 import {useToast} from "@/hooks/use-toast";
-import { format, isBefore, startOfDay, parseISO, differenceInHours } from 'date-fns';
+import { format, isBefore, startOfDay, parseISO, differenceInHours, isWithinInterval } from 'date-fns'; // Added isWithinInterval
 import { it } from 'date-fns/locale';
 import type { UserData } from '@/types/user';
 import { sendEmail } from '@/services/email';
 import { getCalendarLinksFromSlot } from '@/lib/calendar-utils';
 import type { BookableSlot, BookingViewSlot } from '@/types/schedule'; // Import schedule types
 import type { AllUsersData, AllProfessorAvailability } from '@/types/app-data'; // Import app data types
+import type { ScheduleConfiguration, AllScheduleConfigurations } from '@/types/schedule-configuration'; // Import configuration types
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 import { logError } from '@/services/logging'; // Import the error logging service
 
 // Constants for filenames
 const USERS_DATA_FILE = 'users';
 const AVAILABILITY_DATA_FILE = 'availability';
+const SCHEDULE_CONFIGURATIONS_FILE = 'scheduleConfigurations'; // Use configurations file
 const LOGGED_IN_USER_KEY = 'loggedInUser'; // Session key (localStorage)
+
+// Helper function to find the active schedule configuration for a given date
+const findActiveConfiguration = (date: Date, configurations: ScheduleConfiguration[]): ScheduleConfiguration | null => {
+    if (!configurations || configurations.length === 0) {
+        return null;
+    }
+    const targetDate = startOfDay(date);
+    return configurations.find(config => {
+        try {
+            const startDate = startOfDay(parseISO(config.startDate));
+            const endDate = startOfDay(parseISO(config.endDate));
+            return isWithinInterval(targetDate, { start: startDate, end: endDate });
+        } catch (e) {
+            console.error(`Error parsing dates for configuration ${config.id}:`, e);
+            return false;
+        }
+    }) || null;
+};
 
 
 export function StudentInterface() {
-  const [allAvailableSlots, setAllAvailableSlots] = useState<BookingViewSlot[]>([]); // All available from assigned profs
+  const [allAvailableSlots, setAllAvailableSlots] = useState<BookingViewSlot[]>([]); // All available from assigned profs based on active schedule
   const [bookedSlots, setBookedSlots] = useState<BookingViewSlot[]>([]); // Slots booked BY THIS student
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [assignedProfessorEmails, setAssignedProfessorEmails] = useState<string[] | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [isLoading, setIsLoading] = useState(true); // Loading state
+  const [scheduleConfigurations, setScheduleConfigurations] = useState<ScheduleConfiguration[]>([]); // Store loaded configurations
 
   const {toast} = useToast();
 
@@ -44,7 +65,6 @@ export function StudentInterface() {
                  setCurrentUserEmail(userSessionData.username);
             } else {
                  console.error("Utente loggato non valido o non studente:", userSessionData);
-                 // Optionally redirect or handle error
             }
          } catch (e) {
            console.error("Errore parsing dati sessione:", e);
@@ -52,7 +72,6 @@ export function StudentInterface() {
          }
        } else {
          console.log("Nessuna sessione utente trovata.");
-         // Optionally redirect to login
        }
      }
    }, []); // Runs only once on mount
@@ -69,54 +88,80 @@ export function StudentInterface() {
    };
 
 
-   // Function to load slots based on assigned professors and booked slots for the user
+   // Function to load slots based on assigned professors, booked slots, and active schedule configuration
    const loadSlots = useCallback(async () => {
-      if (!currentUserEmail) return; // Don't load if user email is not set
+      if (!currentUserEmail) return;
 
       setIsLoading(true);
       try {
-          // 1. Load assigned professors for the current student
+          // 1. Load assigned professors
           const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
           const currentUserData = allUsers[currentUserEmail];
           const currentlyAssigned = Array.isArray(currentUserData?.assignedProfessorEmail) ? currentUserData.assignedProfessorEmail : [];
-          setAssignedProfessorEmails(currentlyAssigned); // Update state
+          setAssignedProfessorEmails(currentlyAssigned);
 
-          // 2. Load all professor availability data
+          // 2. Load all schedule configurations
+          const loadedConfigurations = await readData<AllScheduleConfigurations>(SCHEDULE_CONFIGURATIONS_FILE, []);
+          setScheduleConfigurations(loadedConfigurations);
+
+          // 3. Load all professor availability data
           const allProfessorAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
 
           const loadedAllAvailable: BookingViewSlot[] = [];
           const loadedBookedByUser: BookingViewSlot[] = [];
           const processedBookedIds = new Set<string>();
 
-          // Iterate through ALL professors' availability
+          // Iterate through all professors' availability
           Object.entries(allProfessorAvailability).forEach(([profEmail, slots]) => {
-              slots.forEach(slot => {
-                  // Basic validation
-                  if (slot?.id && slot.classroom && typeof slot.isAvailable === 'boolean' && slot.professorEmail && slot.duration === 60) {
-                     const bookingViewSlot: BookingViewSlot = {
-                         id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
-                         professorEmail: slot.professorEmail,
-                         isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
-                         bookingTime: slot.bookingTime || null,
-                     };
+               // Only consider slots from assigned professors
+               if (currentlyAssigned.includes(profEmail)) {
+                    slots.forEach(slot => {
+                         if (slot?.id && slot.classroom && typeof slot.isAvailable === 'boolean' && slot.professorEmail === profEmail && slot.duration === 60) {
+                            const bookingViewSlot: BookingViewSlot = {
+                                id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
+                                professorEmail: slot.professorEmail,
+                                isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
+                                bookingTime: slot.bookingTime || null,
+                            };
 
-                     // Add to AVAILABLE list if offered by an ASSIGNED professor, available, not booked, and not past
-                     if (currentlyAssigned.includes(slot.professorEmail) && slot.isAvailable && !slot.bookedBy) {
-                         try {
-                             const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`);
-                             if (!isBefore(slotDateTime, startOfDay(new Date()))) {
-                                 loadedAllAvailable.push(bookingViewSlot);
-                             }
-                         } catch (parseError) { console.warn(`Parse error slot ${slot.id}:`, parseError); }
-                     }
+                             // Check if the slot is available, not booked, and within an active schedule configuration for its date
+                            if (slot.isAvailable && !slot.bookedBy) {
+                                try {
+                                    const slotDateObj = parseISO(slot.date);
+                                    const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`);
+                                    const activeConfig = findActiveConfiguration(slotDateObj, loadedConfigurations);
 
-                     // Add to BOOKED BY USER list if booked by current user
-                     if (slot.bookedBy === currentUserEmail && !processedBookedIds.has(bookingViewSlot.id)) {
+                                    // Check if the slot is defined in the active config for that day/time/classroom/professor
+                                     const isActiveInConfig = activeConfig && Object.entries(activeConfig.schedule).some(([key, assignment]) => {
+                                        const [day, time, classroom] = key.split('-');
+                                        const dayOfWeek = format(slotDateObj, 'EEEE', { locale: it }); // Get day name in Italian
+                                        return day === dayOfWeek && time === slot.time && classroom === slot.classroom && assignment.professor === slot.professorEmail;
+                                    });
+
+
+                                    if (!isBefore(slotDateTime, startOfDay(new Date())) && isActiveInConfig) {
+                                         loadedAllAvailable.push(bookingViewSlot);
+                                    }
+                                } catch (parseError) { console.warn(`Parse error slot ${slot.id}:`, parseError); }
+                            }
+                         }
+                    });
+               }
+
+                // Check slots booked BY the current user (regardless of assignment or schedule config, as they booked it previously)
+                slots.forEach(slot => {
+                     if (slot?.id && slot.classroom && slot.bookedBy === currentUserEmail && slot.duration === 60 && !processedBookedIds.has(slot.id)) {
+                         const bookingViewSlot: BookingViewSlot = {
+                             id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
+                             professorEmail: slot.professorEmail,
+                             isBookedByCurrentUser: true,
+                             bookingTime: slot.bookingTime || null,
+                         };
                          loadedBookedByUser.push(bookingViewSlot);
-                         processedBookedIds.add(bookingViewSlot.id);
+                         processedBookedIds.add(slot.id);
                      }
-                  }
-              });
+                 });
+
           });
 
           setAllAvailableSlots(sortSlotsByDateAndTime(loadedAllAvailable));
@@ -129,6 +174,7 @@ export function StudentInterface() {
            setAllAvailableSlots([]);
            setBookedSlots([]);
            setAssignedProfessorEmails(null);
+           setScheduleConfigurations([]); // Reset on error
       } finally {
           setIsLoading(false);
       }
@@ -148,13 +194,25 @@ export function StudentInterface() {
     if (currentUserEmail) {
         setIsLoading(true);
         try {
-             // Re-check assignment before booking
-             const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
-             const currentUserData = allUsers[currentUserEmail];
-             const currentlyAssigned = Array.isArray(currentUserData?.assignedProfessorEmail) ? currentUserData.assignedProfessorEmail : [];
-             if (!currentlyAssigned.includes(slotToBook.professorEmail)) {
+            const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+            const currentUserData = allUsers[currentUserEmail];
+            const currentlyAssigned = Array.isArray(currentUserData?.assignedProfessorEmail) ? currentUserData.assignedProfessorEmail : [];
+            if (!currentlyAssigned.includes(slotToBook.professorEmail)) {
                  throw new Error("Puoi prenotare solo slot di professori a te assegnati.");
+            }
+
+            // Check if the slot is still valid according to active schedule config
+            const slotDateObj = parseISO(slotToBook.date);
+            const activeConfig = findActiveConfiguration(slotDateObj, scheduleConfigurations);
+             const isActiveInConfig = activeConfig && Object.entries(activeConfig.schedule).some(([key, assignment]) => {
+                const [day, time, classroom] = key.split('-');
+                const dayOfWeek = format(slotDateObj, 'EEEE', { locale: it });
+                return day === dayOfWeek && time === slotToBook.time && classroom === slotToBook.classroom && assignment.professor === slotToBook.professorEmail;
+            });
+             if (!isActiveInConfig) {
+                throw new Error("Questo slot non è più valido secondo l'orario attuale.");
              }
+
 
             const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
             const professorSlots = allAvailability[slotToBook.professorEmail];
@@ -196,7 +254,6 @@ export function StudentInterface() {
             } catch (emailError) {
                 console.error("Errore invio email conferma (studente):", emailError);
                 await logError(emailError, 'Student Book Slot (Email)');
-                /* Toast warning? */
                 toast({ title: "Avviso", description: `Prenotazione effettuata, ma errore nell'invio email.` });
             }
 
@@ -212,7 +269,8 @@ export function StudentInterface() {
              setIsLoading(false);
         }
     }
-  }, [currentUserEmail, loadSlots, toast]); // Dependencies
+  }, [currentUserEmail, loadSlots, toast, scheduleConfigurations]); // Added scheduleConfigurations dependency
+
 
   // Function to cancel a booking
   const cancelBooking = useCallback(async (slotToCancel: BookingViewSlot) => {
@@ -236,7 +294,7 @@ export function StudentInterface() {
                    throw new Error("Non puoi cancellare questa prenotazione.");
                 }
 
-                // Update slot
+                // Update slot - make available again
                 originalSlot.bookedBy = null;
                 originalSlot.bookingTime = null;
                 originalSlot.isAvailable = true;
@@ -261,7 +319,6 @@ export function StudentInterface() {
                  } catch (emailError) {
                     console.error("Errore invio email cancellazione (studente):", emailError);
                     await logError(emailError, 'Student Cancel Booking (Email)');
-                    /* Toast warning? */
                     toast({ title: "Avviso", description: `Cancellazione effettuata, ma errore nell'invio email.` });
                  }
 
@@ -324,7 +381,7 @@ export function StudentInterface() {
               ) : !selectedDate ? (
                      <p className="text-muted-foreground p-4 text-center">Seleziona una data.</p>
               ) : filteredAvailableSlots.length === 0 ? (
-                          <p className="text-muted-foreground p-4 text-center">Nessuno slot disponibile per la prenotazione.</p>
+                          <p className="text-muted-foreground p-4 text-center">Nessuno slot disponibile per la prenotazione in questa data.</p>
                       ) : (
                           <div className="overflow-x-auto border rounded-md max-h-96">
                             <Table>
@@ -419,3 +476,4 @@ export function StudentInterface() {
   );
 }
 
+    
