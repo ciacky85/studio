@@ -3,14 +3,14 @@ version: '3.8'
 
 services:
   classroom-scheduler:
-    build: .
+    build: ../ # Adjust build context if docker-compose is inside src
     container_name: classroom-scheduler-app
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: production
     env_file:
-      - .env
-    volumes: # Add volume mapping here
-      - ./config:/app/config # Map local ./config to /app/config inside the container
+      - ../.env # Point to .env file in the parent directory
+    volumes:
+      - ../config:/app/config # Map parent's config to /app/config
     restart: unless-stopped

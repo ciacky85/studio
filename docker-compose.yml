@@ -6,7 +6,7 @@ services:
     # Opzione 1: Costruisci l'immagine dal Dockerfile nella directory corrente
     build: .
     # Opzione 2: Usa un'immagine pre-costruita (es. da GitHub Container Registry)
-    # image: ghcr.io/ciacky85/classroom-scheduler:latest
+    # image: ghcr.io/ciacky85/studio:latest
     container_name: classroom-scheduler-app # Nome del container
     ports:
       - "3000:3000" # Mappa la porta 3000 dell'host alla porta 3000 del container
@@ -17,16 +17,11 @@ services:
       # EMAIL_USER=tua_email@gmail.com
       # EMAIL_PASS=tua_password_app
       # GOOGLE_GENAI_API_KEY=la_tua_api_key
-      # Rimuovi i commenti (#) dalle righe seguenti se NON usi un file .env
-      # MA QUESTO È MENO SICURO
-      # EMAIL_USER: "tua_email@gmail.com"
-      # EMAIL_PASS: "tua_password_app"
-      # GOOGLE_GENAI_API_KEY: "la_tua_api_key"
       NODE_ENV: production # Imposta l'ambiente Node.js a production
     # Usa un file .env per caricare le variabili d'ambiente (RACCOMANDATO)
     env_file:
-      - .env # Cerca un file .env nella stessa directory
+      - .env # Cerca un file .env nella stessa directory e lo carica
     restart: unless-stopped # Riavvia il container a meno che non venga fermato manualmente
-    # Aggiungi altre configurazioni se necessario, come volumi per dati persistenti
-    # volumes:
-    #   - ./data:/app/data # Esempio di montaggio volume
+    volumes:
+      - ./config:/app/config # Mappa la cartella locale ./config a /app/config nel container
+

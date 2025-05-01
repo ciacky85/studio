@@ -52,13 +52,13 @@ Runs on port 3000. Data will be stored in the `config` directory relative to whe
 
 ### Using Docker Compose (Recommended)
 
-1.  **Create `.env` File:** As described above.
-2.  **Create `config` Directory:** `mkdir config` in the project root if it doesn't exist.
+1.  **Create `.env` File:** As described above. This file will be automatically loaded by `docker-compose.yml`.
+2.  **Create `config` Directory:** Run `mkdir config` in the project root if it doesn't exist. This is **required** for the volume mapping defined in `docker-compose.yml`.
 3.  **Build and Run:**
     ```bash
     docker compose up -d --build
     ```
-    The `docker-compose.yml` file includes the volume mapping `- ./config:/app/config`.
+    The `docker-compose.yml` file includes the volume mapping `- ./config:/app/config` and automatically loads the `.env` file.
 4.  **Access Application:** `http://localhost:3000`
 5.  **Stopping:** `docker compose down`
 
@@ -77,7 +77,7 @@ docker build -t ghcr.io/ciacky85/studio:latest .
 mkdir -p config
 
 docker run -p 3000:3000 \
-  --env-file .env \
+  --env-file .env \ # Manually specify the .env file
   -v "$(pwd)/config:/app/config" \ # Map local config directory to container's /app/config
   --name classroom-scheduler-app \
   -d ghcr.io/ciacky85/studio:latest
@@ -108,9 +108,10 @@ docker run -p 3000:3000 \
         *   **File/Folder:** Browse and select the host directory you created in step 3 (e.g., `/volume1/docker/classroom-scheduler/config`).
         *   **Mount path:** Enter `/app/config`. This **must** be exactly `/app/config`.
         *   Leave "Read-Only" unchecked.
-    *   **Environment Variables:** Add `EMAIL_USER`, `EMAIL_PASS`, `GOOGLE_GENAI_API_KEY` (if needed), and set `NODE_ENV` to `production`.
+    *   **Environment Variables:** Add `EMAIL_USER`, `EMAIL_PASS`, `GOOGLE_GENAI_API_KEY` (if needed), and set `NODE_ENV` to `production`. Container Manager will prompt you to enter these values.
     *   Review and click "Done".
 5.  **Access Application:** `http://<your-nas-ip>:<local-port>` (e.g., `http://192.168.1.100:3000`).
 6.  **Firewall:** Ensure your NAS firewall allows incoming traffic on the *local port* mapped.
 
 *Data will now be stored in the host directory you selected (e.g., `/volume1/docker/classroom-scheduler/config`) and will persist even if you stop, remove, or update the container.*
+
