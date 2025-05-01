@@ -1,3 +1,4 @@
+
 'use client';
 
 import {useState, useEffect, useCallback} from 'react';
@@ -31,7 +32,7 @@ import {sendEmail} from '@/services/email';
 import {useToast} from '@/hooks/use-toast';
 import type {UserData, AllUsersData} from '@/types/user';
 import {Separator} from '@/components/ui/separator';
-import {format, parseISO, getDay, isWithinInterval, parse} from 'date-fns';
+import { format, parseISO, getDay, isWithinInterval, parse, isBefore, startOfDay } from 'date-fns'; // Added isBefore, startOfDay
 import {ManageUserProfessorsDialog} from './manage-user-professors-dialog';
 import {cn} from '@/lib/utils';
 import type {DisplayUser} from '@/types/display-user';
@@ -85,6 +86,7 @@ export const findRelevantConfigurations = (
     try {
       const startDate = parseISO(config.startDate);
       const endDate = parseISO(config.endDate);
+      // Ensure end date is included in the interval check
       return isWithinInterval(date, {start: startDate, end: endDate});
     } catch (e) {
       console.error(
@@ -319,13 +321,24 @@ export function AdminInterface() {
         allUsers[email] = userData;
         await writeData(USERS_DATA_FILE, allUsers);
 
-        await sendEmail({
-          to: email,
-          subject: 'Registrazione Approvata',
-          html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
-        });
+        // Send approval email (best effort)
+         try {
+            await sendEmail({
+                to: email,
+                subject: 'Registrazione Approvata',
+                html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
+            });
+         } catch (emailError) {
+             console.error("Errore invio email approvazione:", emailError);
+             await logError(emailError, `Admin Approve Registration Email (${email})`);
+             toast({
+                 variant: "default",
+                 title: "Avviso Email",
+                 description: `Registrazione approvata, ma errore invio email a ${email}.`,
+             });
+         }
 
-        await loadData();
+        await loadData(); // Refresh data after successful approval & email attempt
 
         toast({
           title: 'Registrazione Approvata',
@@ -348,59 +361,74 @@ export function AdminInterface() {
         title: 'Errore Approvazione Registrazione',
         description: `Impossibile approvare la registrazione per ${email}. Controlla errors.log.`,
       });
+       // Optionally reload data on critical error to ensure consistency
+       await loadData();
     } finally {
       setIsLoading(false);
     }
   };
 
   const rejectRegistration = async (email: string) => {
-    setIsLoading(true);
-    try {
-      const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
-      const registration = allUsers[email];
+     setIsLoading(true);
+     try {
+        const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+        const registration = allUsers[email];
 
-      if (registration && !registration.approved) {
-        delete allUsers[email];
-        await writeData(USERS_DATA_FILE, allUsers);
+        if (registration && !registration.approved) {
+            delete allUsers[email];
+            await writeData(USERS_DATA_FILE, allUsers);
 
-        await sendEmail({
-          to: email,
-          subject: 'Registrazione Rifiutata',
-          html: '<p>La tua registrazione è stata rifiutata.</p>',
-        });
+            // Send rejection email (best effort)
+             try {
+                 await sendEmail({
+                    to: email,
+                    subject: 'Registrazione Rifiutata',
+                    html: '<p>La tua registrazione è stata rifiutata.</p>',
+                });
+             } catch (emailError) {
+                 console.error("Errore invio email rifiuto:", emailError);
+                 await logError(emailError, `Admin Reject Registration Email (${email})`);
+                 toast({
+                     variant: "default",
+                     title: "Avviso Email",
+                     description: `Registrazione rifiutata, ma errore invio email a ${email}.`,
+                 });
+             }
 
-        await loadData();
+            await loadData(); // Refresh data after successful rejection & email attempt
 
-        toast({
-          title: 'Registrazione Rifiutata',
-          description: `La registrazione per ${email} è stata rifiutata ed eliminata.`,
-        });
-      } else if (!registration) {
-        toast({
-          variant: 'destructive',
-          title: 'Errore',
-          description: 'Registrazione non trovata.',
-        });
-        await loadData();
-      } else {
-        toast({
-          variant: 'default',
-          title: 'Azione Non Necessaria',
-          description: "L'utente è già approvato.",
-        });
-      }
-    } catch (error) {
-      console.error('Errore durante il rifiuto della registrazione per:', email, error);
-      await logError(error, `Admin Reject Registration (${email})`);
-      toast({
-        variant: 'destructive',
-        title: 'Errore Rifiuto Registrazione',
-        description: `Impossibile rifiutare la registrazione per ${email}. Controlla errors.log.`,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+            toast({
+                title: "Registrazione Rifiutata",
+                description: `La registrazione per ${email} è stata rifiutata ed eliminata.`,
+            });
+        } else if (!registration) {
+            toast({
+                variant: "destructive",
+                title: "Errore",
+                description: "Registrazione non trovata.",
+            });
+            await loadData(); // Refresh UI
+        } else { // User exists but is already approved
+             toast({
+                variant: "default",
+                title: "Azione Non Necessaria",
+                description: "L'utente è già approvato.",
+            });
+        }
+     } catch (error) {
+         console.error("Errore durante il rifiuto della registrazione per:", email, error);
+         await logError(error, `Admin Reject Registration (${email})`);
+         toast({
+             variant: "destructive",
+             title: "Errore Rifiuto Registrazione",
+             description: `Impossibile rifiutare la registrazione per ${email}. Controlla errors.log.`,
+         });
+          // Optionally reload data on critical error
+          await loadData();
+     } finally {
+         setIsLoading(false);
+     }
+   };
 
   // --- Schedule Configuration Management ---
 
@@ -615,10 +643,11 @@ export function AdminInterface() {
       return;
     }
 
-    setIsLoading(true); // Use general loading state or a specific one if preferred
+    // Don't set isLoading here to avoid flicker when just changing date
+    // setIsLoading(true);
     try {
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
-      const dayOfWeekString = format(guestBookingDate, 'EEEE', {locale: it}); // Get Italian day name
+      const dayOfWeekString = format(guestBookingDate, 'EEEE', {locale: it});
 
       // Find relevant configurations for the selected guest booking date
       const relevantConfigs = findRelevantConfigurations(
@@ -626,9 +655,6 @@ export function AdminInterface() {
         savedConfigurations
       );
       if (relevantConfigs.length === 0) {
-        console.log(
-          `[Admin Guest] No relevant schedule configurations found for ${formattedDate}`
-        );
         setAvailableGuestSlots([]);
         return;
       }
@@ -701,7 +727,7 @@ export function AdminInterface() {
       });
       setAvailableGuestSlots([]);
     } finally {
-      setIsLoading(false);
+      // setIsLoading(false);
     }
   }, [guestBookingDate, savedConfigurations, toast]); // Include dependencies
 
@@ -1093,7 +1119,7 @@ export function AdminInterface() {
                       {isLoading ? (
                         <p>Caricamento slot...</p>
                       ) : availableGuestSlots.length === 0 ? (
-                        <p>
+                        <p className="text-muted-foreground">
                           Nessuno slot 'Ospite' disponibile per questa data
                           secondo le configurazioni attive.
                         </p>
@@ -1121,7 +1147,7 @@ export function AdminInterface() {
                         placeholder="Nome Ospite"
                         value={guestName}
                         onChange={(e) => setGuestName(e.target.value)}
-                        disabled={!selectedGuestSlot || isBookingGuest}
+                        disabled={!selectedGuestSlot || isBookingGuest || isLoading}
                       />
                       <Button
                         onClick={handleGuestBooking}

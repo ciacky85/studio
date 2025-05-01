@@ -8,7 +8,7 @@ export interface BookableSlot {
   classroom: string; // Name of the classroom
   duration: number; // Duration in minutes (e.g., 60)
   isAvailable: boolean; // Whether the professor marked it as available
-  bookedBy: string | null; // Email of the student or professor who booked, or null
+  bookedBy: string | null; // Email of the student or professor who booked, or null or 'Ospite: guestName'
   bookingTime: string | null; // ISO string timestamp of booking, or null
   professorEmail: string; // Email of the professor offering the slot OR 'GUEST'
 }
@@ -22,7 +22,7 @@ export interface ScheduleAssignment {
 export interface BookingViewSlot {
   id: string;
   date: string;
-  day: string;
+  day: string; // Added day property
   time: string;
   classroom: string;
   duration: number;
