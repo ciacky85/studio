@@ -15,7 +15,7 @@ import {sendEmail}from '@/services/email';
 import {useToast}from "@/hooks/use-toast";
 import type { UserData, AllUsersData } from '@/types/user';
 import { Separator } from '@/components/ui/separator';
-import { format, parseISO, isWithinInterval, startOfDay, isBefore } from 'date-fns';
+import { format, parseISO, isWithinInterval, startOfDay, isBefore, getDay } from 'date-fns';
 import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
 import { cn } from "@/lib/utils";
 import type {DisplayUser}from '@/types/display-user';
@@ -31,6 +31,9 @@ import type { DateRange } from 'react-day-picker'; // Import DateRange
 import { Calendar as CalendarIcon } from "lucide-react"; // Import CalendarIcon
 import type { ScheduleConfiguration, AllScheduleConfigurations } from '@/types/schedule-configuration'; // Import configuration types
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'; // Import AlertDialog components
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"; // Import RadioGroup
+import { Label } from "@/components/ui/label"; // Import Label
+
 
 // Constants for filenames
 const USERS_DATA_FILE = 'users';
@@ -55,16 +58,17 @@ export const findRelevantConfigurations = (date: Date, configurations: ScheduleC
     if (!configurations || configurations.length === 0) {
         return [];
     }
-    const targetDateStart = startOfDay(date); // Compare against the start of the target date
+    const targetDateStart = startOfDay(date);
 
     return configurations.filter(config => {
         try {
-            const endDate = startOfDay(parseISO(config.endDate)); // Get start of end date for comparison
-            // Check if end date is today or in the future relative to the target date
-            return !isBefore(endDate, targetDateStart);
+            const startDate = startOfDay(parseISO(config.startDate));
+            const endDate = startOfDay(parseISO(config.endDate));
+            // Check if target date is within the config's interval (inclusive)
+            return isWithinInterval(targetDateStart, { start: startDate, end: endDate });
         } catch (e) {
-            console.error(`Error parsing end date for configuration ${config.id}:`, e);
-            return false; // Exclude configs with invalid dates
+            console.error(`Error parsing dates for configuration ${config.id}:`, e);
+            return false;
         }
     });
 };
@@ -77,7 +81,7 @@ function deepEqual(obj1: any, obj2: any): boolean {
     return false;
   }
 
-  const keys1 = Object.keys(obj1).sort(); // Sort keys for consistent comparison
+  const keys1 = Object.keys(obj1).sort();
   const keys2 = Object.keys(obj2).sort();
 
   if (keys1.length !== keys2.length) return false;
@@ -96,10 +100,10 @@ function deepEqual(obj1: any, obj2: any): boolean {
 // Function to get a color class based on professor email
 const getProfessorColor = (professorEmail: string, allProfessors: string[]): string => {
     if (!professorEmail) {
-        return 'bg-background'; // Default background if no professor is assigned
+        return 'bg-background';
     }
     const index = allProfessors.indexOf(professorEmail);
-    return index === -1 ? 'bg-gray-100 dark:bg-gray-800' : professorColors[index % professorColors.length]; // Fallback color
+    return index === -1 ? 'bg-gray-100 dark:bg-gray-800' : professorColors[index % professorColors.length];
 };
 
 
@@ -107,21 +111,25 @@ export function AdminInterface() {
   const [pendingRegistrations, setPendingRegistrations] = useState<DisplayUser[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<DisplayUser[]>([]);
   const [professors, setProfessors] = useState<string[]>([]);
-  const [schedule, setSchedule] = useState<ClassroomSchedule>({}); // Current editable schedule
+  const [schedule, setSchedule] = useState<ClassroomSchedule>({});
   const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]);
   const [isManageProfessorsDialogOpen, setIsManageProfessorsDialogOpen] = useState(false);
   const [selectedUserForProfessorManagement, setSelectedUserForProfessorManagement] = useState<DisplayUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Loading state
+  const [isLoading, setIsLoading] = useState(true);
 
-  // State for schedule configuration management
   const [configName, setConfigName] = useState('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [savedConfigurations, setSavedConfigurations] = useState<ScheduleConfiguration[]>([]);
 
-  // State for overwrite confirmation dialog
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
   const [configToOverwriteId, setConfigToOverwriteId] = useState<string | null>(null);
   const [configToSave, setConfigToSave] = useState<ScheduleConfiguration | null>(null);
+
+  // State for Single Booking Tab
+  const [singleBookingDate, setSingleBookingDate] = useState<Date | undefined>(new Date());
+  const [availableGuestSlots, setAvailableGuestSlots] = useState<string[]>([]); // Stores "HH:MM - Classroom" strings
+  const [selectedGuestSlot, setSelectedGuestSlot] = useState<string | null>(null);
+  const [guestName, setGuestName] = useState('');
 
 
   const {toast} = useToast();
@@ -244,6 +252,75 @@ export function AdminInterface() {
          });
      }
   }, [schedule, isLoading, toast]); // Include isLoading and toast
+
+   // Calculate available guest slots when date or configurations change
+   useEffect(() => {
+       if (!singleBookingDate || isLoading) {
+           setAvailableGuestSlots([]);
+           return;
+       }
+
+       const calculateGuestSlots = async () => {
+           try {
+               const formattedDate = format(singleBookingDate, 'yyyy-MM-dd');
+               const dayOfWeekIndex = getDay(singleBookingDate);
+               const dayOfWeekString = days[dayOfWeekIndex];
+               const relevantConfigs = findRelevantConfigurations(singleBookingDate, savedConfigurations);
+               const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
+
+               const potentialSlots = new Set<string>(); // "HH:MM-Classroom"
+               const bookedSlotKeys = new Set<string>(); // "HH:MM-Classroom"
+
+               // Find all potential slots from relevant configurations for the selected day
+               relevantConfigs.forEach(config => {
+                   Object.entries(config.schedule).forEach(([key, assignment]) => {
+                       const parts = key.split('-');
+                       if (parts.length >= 3) {
+                           const day = parts[0];
+                           const time = parts[1];
+                           const classroom = parts.slice(2).join('-');
+                           if (day === dayOfWeekString) {
+                               potentialSlots.add(`${time}-${classroom}`);
+                           }
+                       }
+                   });
+               });
+
+               // Find all booked slots for the selected date
+               Object.values(allAvailability).flat().forEach(slot => {
+                   if (slot?.date === formattedDate && slot.bookedBy) {
+                       bookedSlotKeys.add(`${slot.time}-${slot.classroom}`);
+                   }
+               });
+
+               // Determine available slots
+               const available = Array.from(potentialSlots).filter(slotKey => !bookedSlotKeys.has(slotKey));
+
+               // Sort available slots by time, then classroom
+               available.sort((a, b) => {
+                   const [timeA, classroomA] = a.split('-');
+                   const [timeB, classroomB] = b.split('-');
+                   const timeCompare = timeA.localeCompare(timeB);
+                   if (timeCompare !== 0) return timeCompare;
+                   return classroomA.localeCompare(classroomB);
+               });
+
+               setAvailableGuestSlots(available);
+               setSelectedGuestSlot(null); // Reset selection when date changes
+               setGuestName(''); // Reset guest name
+
+           } catch (error) {
+               console.error("[Admin] Failed to calculate guest slots:", error);
+               await logError(error, 'Admin Calculate Guest Slots');
+               toast({ variant: "destructive", title: "Errore Calcolo Slot", description: "Impossibile calcolare gli slot disponibili per gli ospiti." });
+               setAvailableGuestSlots([]);
+           }
+       };
+
+       calculateGuestSlots();
+
+   }, [singleBookingDate, savedConfigurations, isLoading, toast]); // Recalculate when date or configs change
+
 
   const approveRegistration = async (email: string) => {
     console.log(`[Admin] Attempting to approve registration for: ${email}`);
@@ -474,6 +551,10 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
         toast({ variant: "destructive", title: "Errore", description: "Selezionare un intervallo di date valido." });
         return;
     }
+    if (Object.keys(schedule).length === 0) {
+         toast({ variant: "destructive", title: "Errore", description: "L'orario da salvare non può essere vuoto." });
+         return;
+    }
 
     const newConfigData: Omit<ScheduleConfiguration, 'id'> = {
         name: configName.trim(),
@@ -482,37 +563,36 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
         schedule: { ...schedule }, // Save a copy of the current schedule grid
     };
 
-    // Check if an existing configuration has the same name (but different dates/content)
+    // Check if an existing configuration has the same name (but potentially different dates/content)
     const configWithSameName = savedConfigurations.find(c => c.name === newConfigData.name);
 
-    // Check if an existing config has the same dates AND content (regardless of name)
-     const existingConfigWithSameContent = savedConfigurations.find(c =>
-         c.startDate === newConfigData.startDate &&
-         c.endDate === newConfigData.endDate &&
-         deepEqual(c.schedule, newConfigData.schedule)
-     );
-
-
-    if (existingConfigWithSameContent && configWithSameName?.id === existingConfigWithSameContent.id) {
-         toast({ title: "Configurazione Esistente", description: "Una configurazione identica (nome, date, contenuto) esiste già. Nessuna modifica apportata." });
-         return;
-    }
-
-    const newConfigComplete: ScheduleConfiguration = {
+     const newConfigComplete: ScheduleConfiguration = {
         ...newConfigData,
-        // Use existing ID if name matches, otherwise generate new ID
         id: configWithSameName ? configWithSameName.id : Date.now().toString()
     };
 
-    if (configWithSameName) {
-        // Prompt for overwrite
-        setConfigToSave(newConfigComplete); // Store the potential config to save
-        setConfigToOverwriteId(configWithSameName.id); // Store the ID to overwrite
+    // Check if the new configuration is functionally identical to an existing one (ignoring name/id)
+     const isIdenticalToExisting = savedConfigurations.some(existingConfig =>
+         existingConfig.startDate === newConfigComplete.startDate &&
+         existingConfig.endDate === newConfigComplete.endDate &&
+         deepEqual(existingConfig.schedule, newConfigComplete.schedule)
+     );
+
+    if (isIdenticalToExisting) {
+         toast({ title: "Configurazione Identica Esistente", description: "Una configurazione con le stesse date e lo stesso orario esiste già. Nessuna modifica apportata." });
+         return;
+    }
+
+    if (configWithSameName && !isIdenticalToExisting) {
+        // Name exists, but content is different: Prompt for overwrite
+        setConfigToSave(newConfigComplete);
+        setConfigToOverwriteId(configWithSameName.id);
         setShowOverwriteConfirm(true);
-    } else {
-        // No existing config with the same name, save directly
+    } else if (!configWithSameName) {
+        // New name, save directly
         await saveConfiguration(newConfigComplete, false);
     }
+    // If name exists and content is identical, we already returned above
 };
 
 // Actual save function (can be called directly or after confirmation)
@@ -527,9 +607,9 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
             updatedConfigs = currentConfigs.map(c => c.id === configToSave.id ? configToSave : c);
         } else {
             console.log(`[Admin] Adding new configuration ID: ${configToSave.id}`);
-            // Check for ID collision just in case (highly unlikely with timestamp)
+            // Check for ID collision just in case
              if (currentConfigs.some(c => c.id === configToSave.id)) {
-                  const newId = Date.now().toString() + Math.random().toString(16).slice(2); // Ensure unique ID
+                  const newId = Date.now().toString() + Math.random().toString(16).slice(2);
                   console.warn(`[Admin] ID collision detected, generating new ID: ${newId}`);
                   configToSave.id = newId;
              }
@@ -562,15 +642,15 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
   const handleLoadConfiguration = (configId: string) => {
        const configToLoad = savedConfigurations.find(c => c.id === configId);
        if (configToLoad) {
-           setSchedule(configToLoad.schedule); // Load the saved grid into the editable schedule
-           setConfigName(configToLoad.name); // Load name and dates back to fields for reference/editing
+           setSchedule(configToLoad.schedule);
+           setConfigName(configToLoad.name);
            try {
                 setDateRange({ from: parseISO(configToLoad.startDate), to: parseISO(configToLoad.endDate) });
            } catch (e) {
                console.error("Error parsing dates from loaded config:", e);
-               setDateRange(undefined); // Reset date range if parsing fails
+               setDateRange(undefined);
                toast({ variant: "destructive", title: "Errore Date", description: "Date della configurazione non valide." });
-               return; // Stop loading if dates are invalid
+               return;
            }
            toast({ title: "Configurazione Caricata", description: `Configurazione "${configToLoad.name}" caricata nella griglia per la modifica.` });
        } else {
@@ -602,6 +682,68 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
       toast({ title: "Tabella Pulita", description: "La griglia di assegnazione è stata resettata." });
    };
 
+   // --- Single Booking Functions ---
+   const handleGuestBooking = async () => {
+       if (!selectedGuestSlot || !guestName.trim() || !singleBookingDate) {
+           toast({ variant: "destructive", title: "Errore", description: "Selezionare uno slot e inserire il nome dell'ospite." });
+           return;
+       }
+       if (isBefore(singleBookingDate, startOfDay(new Date()))) {
+            toast({ variant: "destructive", title: "Errore", description: "Non è possibile prenotare per date passate." });
+            return;
+       }
+
+
+       setIsLoading(true);
+       try {
+           const [time, classroom] = selectedGuestSlot.split('-');
+           const formattedDate = format(singleBookingDate, 'yyyy-MM-dd');
+           const dayOfWeekString = days[getDay(singleBookingDate)];
+
+           // Create a pseudo-BookableSlot for the guest booking
+           const guestBookingSlot: BookableSlot = {
+               id: `${formattedDate}-${time}-${classroom}-GUEST-${guestName.trim().replace(/\s+/g, '_')}`, // Unique guest ID
+               date: formattedDate,
+               day: dayOfWeekString,
+               time: time,
+               classroom: classroom,
+               duration: 60, // Assuming guest bookings are also 60 mins
+               isAvailable: false, // It's booked now
+               bookedBy: `Ospite: ${guestName.trim()}`, // Indicate it's a guest
+               bookingTime: new Date().toISOString(),
+               professorEmail: "GUEST", // Special identifier for guest bookings
+           };
+
+           // Add this guest booking to a placeholder professor email in the availability data
+           // We use "GUEST" as the key to store all guest bookings
+           const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
+           const guestSlots = allAvailability["GUEST"] || [];
+           guestSlots.push(guestBookingSlot);
+           allAvailability["GUEST"] = sortSlots(guestSlots); // Keep guest slots sorted
+
+           await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
+
+           toast({ title: "Prenotazione Ospite Effettuata", description: `Slot ${time} in ${classroom} prenotato per ${guestName.trim()} il ${format(singleBookingDate, 'dd/MM/yyyy', { locale: it })}.` });
+
+           // Refresh available guest slots for the current date
+           const currentAvailable = availableGuestSlots.filter(slot => slot !== selectedGuestSlot);
+           setAvailableGuestSlots(currentAvailable);
+           setSelectedGuestSlot(null);
+           setGuestName('');
+
+           // Also refresh the main "Booked Slots" list
+           setAllBookedSlots(prev => sortSlots([...prev, guestBookingSlot]));
+
+
+       } catch (error) {
+           console.error("[Admin] Failed to create guest booking:", error);
+           await logError(error, 'Admin Guest Booking');
+           toast({ variant: "destructive", title: "Errore Prenotazione Ospite", description: "Impossibile creare la prenotazione per l'ospite." });
+       } finally {
+           setIsLoading(false);
+       }
+   };
+
 
  // Display loading indicator
  if (isLoading && (!pendingRegistrations.length && !approvedUsers.length)) { // Show loading only on initial load or if data is truly empty
@@ -618,10 +760,11 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
         </CardHeader>
         <CardContent className="grid gap-4">
           <Tabs defaultValue="classrooms" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4"> {/* Adjusted grid columns */}
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-5"> {/* Adjusted grid columns */}
               <TabsTrigger value="classrooms">Gestione Orario Aule</TabsTrigger>
               <TabsTrigger value="configurations">Configurazioni Salvate</TabsTrigger>
               <TabsTrigger value="users">Utenti</TabsTrigger>
+              <TabsTrigger value="guestBooking">Prenotazione Singola</TabsTrigger> {/* New Tab */}
               <TabsTrigger value="bookings">Prenotazioni</TabsTrigger>
             </TabsList>
 
@@ -630,7 +773,7 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
               <Card>
                  <CardHeader>
                      <CardTitle>Modifica Orario Corrente</CardTitle>
-                     <CardDescription>Assegna professori agli slot orari nelle aule. Questa è la griglia attualmente in modifica. Salva questa configurazione con un nome e un intervallo di date.</CardDescription>
+                     <CardDescription>Assegna professori agli slot orari nelle aule. Salva questa configurazione con un nome e un intervallo di date.</CardDescription>
                  </CardHeader>
                  <CardContent>
                     {/* Classroom Schedule Grid */}
@@ -758,7 +901,7 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
                              </Button>
                         </div>
                         <div className="flex items-end">
-                             <Button onClick={initiateSaveConfiguration} disabled={isLoading || !configName || !dateRange?.from || !dateRange?.to} className="w-full">
+                             <Button onClick={initiateSaveConfiguration} disabled={isLoading || !configName || !dateRange?.from || !dateRange?.to || Object.keys(schedule).length === 0} className="w-full">
                                 Salva Configurazione Orario
                              </Button>
                         </div>
@@ -898,6 +1041,77 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
              </Card>
             </TabsContent>
 
+            {/* Tab: Prenotazione Singola (Guest Booking) */}
+            <TabsContent value="guestBooking">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Prenotazione Aula per Ospite</CardTitle>
+                        <CardDescription>Seleziona una data e uno slot orario disponibile per prenotare un'aula per un ospite esterno.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-6 md:grid-cols-2">
+                        {/* Calendar for selecting date */}
+                        <div className="flex justify-center">
+                             <Calendar
+                                locale={it}
+                                mode="single"
+                                selected={singleBookingDate}
+                                onSelect={(date) => { setSingleBookingDate(date); setSelectedGuestSlot(null); setGuestName(''); }} // Reset selection on date change
+                                className="rounded-md border"
+                                disabled={(date) => isBefore(date, startOfDay(new Date())) || isLoading} // Disable past dates
+                            />
+                        </div>
+                        {/* Available slots and guest form */}
+                        <div>
+                            <h3 className="text-lg font-semibold mb-3">
+                                Slot Disponibili per {singleBookingDate ? format(singleBookingDate, 'dd/MM/yyyy', { locale: it }) : 'Seleziona una data'}
+                            </h3>
+                            {isLoading ? <p>Caricamento slot...</p> : !singleBookingDate ? (
+                                <p className="text-muted-foreground">Seleziona una data dal calendario.</p>
+                            ) : availableGuestSlots.length === 0 ? (
+                                <p className="text-muted-foreground">Nessuno slot disponibile in questa data.</p>
+                            ) : (
+                                <RadioGroup
+                                     value={selectedGuestSlot || ''}
+                                     onValueChange={setSelectedGuestSlot}
+                                     className="grid gap-2 mb-4 max-h-60 overflow-y-auto border p-2 rounded-md" // Added scroll
+                                >
+                                    {availableGuestSlots.map((slotKey) => {
+                                        const [time, classroom] = slotKey.split('-');
+                                        return (
+                                             <div key={slotKey} className="flex items-center space-x-2">
+                                                 <RadioGroupItem value={slotKey} id={`guest-slot-${slotKey}`} />
+                                                 <Label htmlFor={`guest-slot-${slotKey}`}>{time} - {classroom}</Label>
+                                             </div>
+                                        );
+                                     })}
+                                </RadioGroup>
+                            )}
+                            {/* Guest Name Input and Booking Button */}
+                            {selectedGuestSlot && (
+                                <div className="grid gap-4">
+                                    <div>
+                                        <Label htmlFor="guestName">Nome Ospite (Obbligatorio)</Label>
+                                        <Input
+                                            id="guestName"
+                                            placeholder="Nome Cognome Ospite"
+                                            value={guestName}
+                                            onChange={(e) => setGuestName(e.target.value)}
+                                            disabled={isLoading}
+                                        />
+                                    </div>
+                                    <Button
+                                        onClick={handleGuestBooking}
+                                        disabled={isLoading || !guestName.trim()}
+                                    >
+                                        {isLoading ? 'Prenotazione...' : 'Prenota per Ospite'}
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            </TabsContent>
+
              {/* Tab: Prenotazioni */}
             <TabsContent value="bookings">
                  <Card>
@@ -917,7 +1131,7 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
                                              <TableHead>Ora</TableHead>
                                              <TableHead>Aula</TableHead>
                                              <TableHead>Professore</TableHead>
-                                             <TableHead>Studente/Professore</TableHead>
+                                             <TableHead>Studente/Professore/Ospite</TableHead>
                                              <TableHead>Ora Prenotazione</TableHead>
                                          </TableRow>
                                      </TableHeader>
@@ -927,7 +1141,7 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
                                                  <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                                                  <TableCell>{slot.time}</TableCell>
                                                  <TableCell>{slot.classroom}</TableCell>
-                                                 <TableCell>{slot.professorEmail}</TableCell>
+                                                 <TableCell>{slot.professorEmail === 'GUEST' ? 'N/A' : slot.professorEmail}</TableCell>
                                                  <TableCell>{slot.bookedBy}</TableCell>
                                                  <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm', { locale: it }) : 'N/A'}</TableCell>
                                              </TableRow>
@@ -988,3 +1202,4 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
     </>
   );
 }
+
