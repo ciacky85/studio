@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import ClientHeader from '@/components/ClientHeader'; // Import ClientHeader
+import type { ReactNode } from 'react'; // Import ReactNode
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -21,10 +22,11 @@ export const metadata: Metadata = {
   description: 'Gestore Orario Aule - Generato da Firebase Studio. Data is stored in the /config directory.', // Added note about data storage
 };
 
+// Use the standard ReactNode type for children
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
   return (
     <html lang="en">
