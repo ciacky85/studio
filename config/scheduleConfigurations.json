@@ -1,31 +1,8 @@
 [
   {
-    "id": "1746121492463",
-    "name": "Marta Maggio",
+    "name": "Maggio 1",
     "startDate": "2025-05-01",
-    "endDate": "2025-05-31",
-    "schedule": {
-      "Lunedì-07:00-Aula 1 Grande": {
-        "professor": ""
-      },
-      "Lunedì-08:00-Aula 1 Grande": {
-        "professor": ""
-      },
-      "Lunedì-09:00-Aula 1 Grande": {
-        "professor": ""
-      },
-      "Lunedì-10:00-Aula 1 Grande": {
-        "professor": "lkc.marta@gmail.com"
-      },
-      "Lunedì-11:00-Aula 1 Grande": {
-        "professor": "lkc.marta@gmail.com"
-      }
-    }
-  },
-  {
-    "name": "Marta Maggio 1",
-    "startDate": "2025-05-01",
-    "endDate": "2025-05-31",
+    "endDate": "2025-05-11",
     "schedule": {
       "Lunedì-07:00-Aula 1 Grande": {
         "professor": ""
@@ -44,8 +21,64 @@
       },
       "Lunedì-12:00-Aula 2 Piccola": {
         "professor": "lkc.marta@gmail.com"
+      },
+      "Martedì-13:00-Aula 1 Grande": {
+        "professor": "ospite@creativeacademy.it"
+      },
+      "Martedì-14:00-Aula 1 Grande": {
+        "professor": "ospite@creativeacademy.it"
+      },
+      "Mercoledì-16:00-Aula 1 Grande": {
+        "professor": "ospite@creativeacademy.it"
+      },
+      "Mercoledì-17:00-Aula 1 Grande": {
+        "professor": "ospite@creativeacademy.it"
+      },
+      "Mercoledì-07:00-Aula 2 Piccola": {
+        "professor": "ospite@creativeacademy.it"
       }
     },
-    "id": "1746132542043"
+    "id": "1746135347637"
+  },
+  {
+    "name": "Maggio 2",
+    "startDate": "2025-05-12",
+    "endDate": "2025-05-18",
+    "schedule": {
+      "Lunedì-07:00-Aula 1 Grande": {
+        "professor": ""
+      },
+      "Lunedì-08:00-Aula 1 Grande": {
+        "professor": ""
+      },
+      "Lunedì-09:00-Aula 1 Grande": {
+        "professor": ""
+      },
+      "Lunedì-10:00-Aula 1 Grande": {
+        "professor": "lkc.marta@gmail.com"
+      },
+      "Lunedì-11:00-Aula 1 Grande": {
+        "professor": "lkc.marta@gmail.com"
+      },
+      "Lunedì-12:00-Aula 2 Piccola": {
+        "professor": "ospite@creativeacademy.it"
+      },
+      "Martedì-13:00-Aula 1 Grande": {
+        "professor": "ospite@creativeacademy.it"
+      },
+      "Martedì-14:00-Aula 1 Grande": {
+        "professor": "ospite@creativeacademy.it"
+      },
+      "Mercoledì-16:00-Aula 1 Grande": {
+        "professor": "ospite@creativeacademy.it"
+      },
+      "Mercoledì-17:00-Aula 1 Grande": {
+        "professor": "ospite@creativeacademy.it"
+      },
+      "Mercoledì-07:00-Aula 2 Piccola": {
+        "professor": "ospite@creativeacademy.it"
+      }
+    },
+    "id": "1746135376151"
   }
 ]

@@ -41,6 +41,7 @@ const AVAILABILITY_DATA_FILE = 'availability';
 const SCHEDULE_DATA_FILE = 'schedule'; // Represents the *currently being edited* schedule
 const SCHEDULE_CONFIGURATIONS_FILE = 'scheduleConfigurations'; // Stores saved, named configurations
 const LOGGED_IN_USER_KEY = 'loggedInUser'; // Session key (localStorage)
+const GUEST_PROFESSOR_EMAIL = 'ospite@creativeacademy.it'; // Constant for the guest professor email
 
 // Define available classrooms (could be moved to a config file later)
 const classrooms = ['Aula 1 Grande', 'Aula 2 Piccola'];
@@ -100,7 +101,11 @@ function deepEqual(obj1: any, obj2: any): boolean {
 // Function to get a color class based on professor email
 const getProfessorColor = (professorEmail: string, allProfessors: string[]): string => {
     if (!professorEmail) {
-        return 'bg-background';
+        return 'bg-background'; // No assignment, default background
+    }
+     // Special color for guest professor? Or handle like others?
+    if (professorEmail === GUEST_PROFESSOR_EMAIL) {
+        return 'bg-gray-200 dark:bg-gray-700'; // Example: distinct gray for guest slots
     }
     const index = allProfessors.indexOf(professorEmail);
     return index === -1 ? 'bg-gray-100 dark:bg-gray-800' : professorColors[index % professorColors.length];
@@ -127,7 +132,7 @@ export function AdminInterface() {
 
   // State for Single Booking Tab
   const [singleBookingDate, setSingleBookingDate] = useState<Date | undefined>(new Date());
-  const [availableGuestSlots, setAvailableGuestSlots] = useState<string[]>([]); // Stores "HH:MM - Classroom" strings
+  const [availableGuestSlots, setAvailableGuestSlots] = useState<string[]>([]); // Stores "HH:MM-Classroom" strings
   const [selectedGuestSlot, setSelectedGuestSlot] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
 
@@ -182,7 +187,7 @@ export function AdminInterface() {
 
             if (userData.approved === true) {
                if(userData.role !== 'admin') loadedApproved.push(userDisplayData);
-               if (userData.role === 'professor') loadedProfessors.push(email);
+               if (userData.role === 'professor' && email !== GUEST_PROFESSOR_EMAIL) loadedProfessors.push(email); // Exclude guest from selectable professors
             } else {
                loadedPending.push(userDisplayData);
             }
@@ -197,7 +202,7 @@ export function AdminInterface() {
        console.log("[Admin] Processing booked slots...");
        const loadedAllBooked: BookableSlot[] = [];
        Object.values(allAvailability).flat().forEach(slot => {
-           if (slot && slot.id && slot.date && slot.time && slot.classroom && slot.bookedBy && slot.professorEmail && slot.duration === 60) {
+           if (slot?.id && slot.date && slot.time && slot.classroom && slot.bookedBy && slot.professorEmail && slot.duration === 60) {
               loadedAllBooked.push(slot);
            }
        });
@@ -253,7 +258,7 @@ export function AdminInterface() {
      }
   }, [schedule, isLoading, toast]); // Include isLoading and toast
 
-   // Calculate available guest slots when date or configurations change
+   // Calculate available GUEST slots when date or configurations change
    useEffect(() => {
        if (!singleBookingDate || isLoading) {
            setAvailableGuestSlots([]);
@@ -265,13 +270,24 @@ export function AdminInterface() {
                const formattedDate = format(singleBookingDate, 'yyyy-MM-dd');
                const dayOfWeekIndex = getDay(singleBookingDate);
                const dayOfWeekString = days[dayOfWeekIndex];
+
+               console.log(`[Admin] Calculating guest slots for ${formattedDate} (${dayOfWeekString})...`);
+
+               // 1. Find relevant configurations for the selected date
                const relevantConfigs = findRelevantConfigurations(singleBookingDate, savedConfigurations);
+               console.log(`[Admin] Found ${relevantConfigs.length} relevant configurations.`);
+               if (relevantConfigs.length === 0) {
+                   setAvailableGuestSlots([]);
+                   return;
+               }
+
+               // 2. Load current availability data to check existing bookings
                const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
+               const existingGuestBookings = allAvailability["GUEST"] || []; // Bookings made via this interface
 
-               const potentialSlots = new Set<string>(); // "HH:MM-Classroom"
-               const bookedSlotKeys = new Set<string>(); // "HH:MM-Classroom"
+               // 3. Identify potential guest slots from relevant configurations
+               const potentialGuestAssignments = new Set<string>(); // "HH:MM-Classroom"
 
-               // Find all potential slots from relevant configurations for the selected day
                relevantConfigs.forEach(config => {
                    Object.entries(config.schedule).forEach(([key, assignment]) => {
                        const parts = key.split('-');
@@ -279,24 +295,31 @@ export function AdminInterface() {
                            const day = parts[0];
                            const time = parts[1];
                            const classroom = parts.slice(2).join('-');
-                           if (day === dayOfWeekString) {
-                               potentialSlots.add(`${time}-${classroom}`);
+                           // Check if the assignment is for the GUEST professor on the selected day
+                           if (day === dayOfWeekString && assignment.professor === GUEST_PROFESSOR_EMAIL) {
+                               potentialGuestAssignments.add(`${time}-${classroom}`);
                            }
                        }
                    });
                });
+               console.log(`[Admin] Found ${potentialGuestAssignments.size} potential guest assignments.`);
 
-               // Find all booked slots for the selected date
-               Object.values(allAvailability).flat().forEach(slot => {
-                   if (slot?.date === formattedDate && slot.bookedBy) {
-                       bookedSlotKeys.add(`${slot.time}-${slot.classroom}`);
+               // 4. Identify already booked guest slots for the selected date
+               const bookedGuestSlotKeys = new Set<string>();
+               existingGuestBookings.forEach(slot => {
+                   if (slot?.date === formattedDate && slot.bookedBy?.startsWith('Ospite:')) {
+                       bookedGuestSlotKeys.add(`${slot.time}-${slot.classroom}`);
                    }
                });
+               console.log(`[Admin] Found ${bookedGuestSlotKeys.size} already booked guest slots for this date.`);
 
-               // Determine available slots
-               const available = Array.from(potentialSlots).filter(slotKey => !bookedSlotKeys.has(slotKey));
+               // 5. Determine available slots (potential assignments MINUS booked slots)
+               const available = Array.from(potentialGuestAssignments).filter(
+                   slotKey => !bookedGuestSlotKeys.has(slotKey)
+               );
+               console.log(`[Admin] Determined ${available.length} available guest slots.`);
 
-               // Sort available slots by time, then classroom
+               // 6. Sort available slots
                available.sort((a, b) => {
                    const [timeA, classroomA] = a.split('-');
                    const [timeB, classroomB] = b.split('-');
@@ -312,14 +335,14 @@ export function AdminInterface() {
            } catch (error) {
                console.error("[Admin] Failed to calculate guest slots:", error);
                await logError(error, 'Admin Calculate Guest Slots');
-               toast({ variant: "destructive", title: "Errore Calcolo Slot", description: "Impossibile calcolare gli slot disponibili per gli ospiti." });
+               toast({ variant: "destructive", title: "Errore Calcolo Slot Ospiti", description: "Impossibile calcolare gli slot disponibili per gli ospiti." });
                setAvailableGuestSlots([]);
            }
        };
 
        calculateGuestSlots();
 
-   }, [singleBookingDate, savedConfigurations, isLoading, toast]); // Recalculate when date or configs change
+   }, [singleBookingDate, savedConfigurations, isLoading, toast]); // Dependencies
 
 
   const approveRegistration = async (email: string) => {
@@ -700,6 +723,28 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
            const formattedDate = format(singleBookingDate, 'yyyy-MM-dd');
            const dayOfWeekString = days[getDay(singleBookingDate)];
 
+           // --- Double Check Availability ---
+           // Ensure the slot is still assigned to guest and not booked in the latest data
+            const currentAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
+            const currentGuestBookings = currentAvailability["GUEST"] || [];
+            const isAlreadyBooked = currentGuestBookings.some(
+                slot => slot.date === formattedDate && slot.time === time && slot.classroom === classroom && slot.bookedBy
+            );
+            if (isAlreadyBooked) {
+                throw new Error("Questo slot per ospiti è stato appena prenotato da qualcun altro.");
+            }
+             // Verify it's still a guest slot based on current config
+            const relevantConfigs = findRelevantConfigurations(singleBookingDate, savedConfigurations);
+             const isGuestSlotInConfig = relevantConfigs.some(config => {
+                 const key = `${dayOfWeekString}-${time}-${classroom}`;
+                 return config.schedule[key]?.professor === GUEST_PROFESSOR_EMAIL;
+             });
+             if (!isGuestSlotInConfig) {
+                 throw new Error("Questo slot non è più designato per gli ospiti.");
+             }
+           // --- End Double Check ---
+
+
            // Create a pseudo-BookableSlot for the guest booking
            const guestBookingSlot: BookableSlot = {
                id: `${formattedDate}-${time}-${classroom}-GUEST-${guestName.trim().replace(/\s+/g, '_')}`, // Unique guest ID
@@ -716,12 +761,11 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
 
            // Add this guest booking to a placeholder professor email in the availability data
            // We use "GUEST" as the key to store all guest bookings
-           const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
-           const guestSlots = allAvailability["GUEST"] || [];
+           const guestSlots = currentAvailability["GUEST"] || [];
            guestSlots.push(guestBookingSlot);
-           allAvailability["GUEST"] = sortSlots(guestSlots); // Keep guest slots sorted
+           currentAvailability["GUEST"] = sortSlots(guestSlots); // Keep guest slots sorted
 
-           await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
+           await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, currentAvailability);
 
            toast({ title: "Prenotazione Ospite Effettuata", description: `Slot ${time} in ${classroom} prenotato per ${guestName.trim()} il ${format(singleBookingDate, 'dd/MM/yyyy', { locale: it })}.` });
 
@@ -738,7 +782,10 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
        } catch (error) {
            console.error("[Admin] Failed to create guest booking:", error);
            await logError(error, 'Admin Guest Booking');
-           toast({ variant: "destructive", title: "Errore Prenotazione Ospite", description: "Impossibile creare la prenotazione per l'ospite." });
+           toast({ variant: "destructive", title: "Errore Prenotazione Ospite", description: `Impossibile creare la prenotazione per l'ospite. ${error instanceof Error ? error.message : ''}` });
+            // Refresh guest slots in case the failure was due to availability changing
+           const calculateGuestSlots = async () => { /* ... reuse or refactor logic ... */ }; // Need to recalculate
+           await calculateGuestSlots(); // Trigger recalculation
        } finally {
            setIsLoading(false);
        }
@@ -773,7 +820,7 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
               <Card>
                  <CardHeader>
                      <CardTitle>Modifica Orario Corrente</CardTitle>
-                     <CardDescription>Assegna professori agli slot orari nelle aule. Salva questa configurazione con un nome e un intervallo di date.</CardDescription>
+                     <CardDescription>Assegna professori (o l'utente 'ospite') agli slot orari nelle aule. Salva questa configurazione con un nome e un intervallo di date.</CardDescription>
                  </CardHeader>
                  <CardContent>
                     {/* Classroom Schedule Grid */}
@@ -824,6 +871,8 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
                                                             </SelectTrigger>
                                                             <SelectContent>
                                                                 <SelectItem value="unassigned">Non Assegnato</SelectItem>
+                                                                 {/* Add the special guest option */}
+                                                                 <SelectItem value={GUEST_PROFESSOR_EMAIL}>Ospite</SelectItem>
                                                                 {professors.map((profEmail) => (
                                                                     <SelectItem key={profEmail} value={profEmail}>
                                                                         {profEmail}
@@ -1046,7 +1095,7 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
                 <Card>
                     <CardHeader>
                         <CardTitle>Prenotazione Aula per Ospite</CardTitle>
-                        <CardDescription>Seleziona una data e uno slot orario disponibile per prenotare un'aula per un ospite esterno.</CardDescription>
+                        <CardDescription>Seleziona una data e uno slot orario disponibile (assegnato a 'ospite@creativeacademy.it') per prenotare un'aula per un ospite esterno.</CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-6 md:grid-cols-2">
                         {/* Calendar for selecting date */}
@@ -1063,12 +1112,12 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
                         {/* Available slots and guest form */}
                         <div>
                             <h3 className="text-lg font-semibold mb-3">
-                                Slot Disponibili per {singleBookingDate ? format(singleBookingDate, 'dd/MM/yyyy', { locale: it }) : 'Seleziona una data'}
+                                Slot Ospite Disponibili per {singleBookingDate ? format(singleBookingDate, 'dd/MM/yyyy', { locale: it }) : 'Seleziona una data'}
                             </h3>
                             {isLoading ? <p>Caricamento slot...</p> : !singleBookingDate ? (
                                 <p className="text-muted-foreground">Seleziona una data dal calendario.</p>
                             ) : availableGuestSlots.length === 0 ? (
-                                <p className="text-muted-foreground">Nessuno slot disponibile in questa data.</p>
+                                <p className="text-muted-foreground">Nessuno slot per ospiti disponibile in questa data secondo le configurazioni attive.</p>
                             ) : (
                                 <RadioGroup
                                      value={selectedGuestSlot || ''}
@@ -1141,7 +1190,7 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
                                                  <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                                                  <TableCell>{slot.time}</TableCell>
                                                  <TableCell>{slot.classroom}</TableCell>
-                                                 <TableCell>{slot.professorEmail === 'GUEST' ? 'N/A' : slot.professorEmail}</TableCell>
+                                                 <TableCell>{slot.professorEmail === 'GUEST' ? 'N/A (Ospite)' : slot.professorEmail}</TableCell>
                                                  <TableCell>{slot.bookedBy}</TableCell>
                                                  <TableCell>{slot.bookingTime ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm', { locale: it }) : 'N/A'}</TableCell>
                                              </TableRow>

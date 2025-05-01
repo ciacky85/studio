@@ -13,5 +13,23 @@
   },
   "Lunedì-11:00-Aula 1 Grande": {
     "professor": "lkc.marta@gmail.com"
+  },
+  "Lunedì-12:00-Aula 2 Piccola": {
+    "professor": "lkc.marta@gmail.com"
+  },
+  "Martedì-13:00-Aula 1 Grande": {
+    "professor": "ospite@creativeacademy.it"
+  },
+  "Martedì-14:00-Aula 1 Grande": {
+    "professor": "ospite@creativeacademy.it"
+  },
+  "Mercoledì-16:00-Aula 1 Grande": {
+    "professor": "ospite@creativeacademy.it"
+  },
+  "Mercoledì-17:00-Aula 1 Grande": {
+    "professor": "ospite@creativeacademy.it"
+  },
+  "Mercoledì-07:00-Aula 2 Piccola": {
+    "professor": "ospite@creativeacademy.it"
   }
 }

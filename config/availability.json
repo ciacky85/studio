@@ -1,6 +1,42 @@
 {
   "lkc.marta@gmail.com": [
     {
+      "id": "2025-05-05-10:00-Aula 1 Grande-lkc.marta@gmail.com",
+      "date": "2025-05-05",
+      "day": "Lunedì",
+      "time": "10:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
+      "professorEmail": "lkc.marta@gmail.com"
+    },
+    {
+      "id": "2025-05-05-11:00-Aula 1 Grande-lkc.marta@gmail.com",
+      "date": "2025-05-05",
+      "day": "Lunedì",
+      "time": "11:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
+      "professorEmail": "lkc.marta@gmail.com"
+    },
+    {
+      "id": "2025-05-05-12:00-Aula 2 Piccola-lkc.marta@gmail.com",
+      "date": "2025-05-05",
+      "day": "Lunedì",
+      "time": "12:00",
+      "classroom": "Aula 2 Piccola",
+      "duration": 60,
+      "isAvailable": false,
+      "bookedBy": null,
+      "bookingTime": null,
+      "professorEmail": "lkc.marta@gmail.com"
+    },
+    {
       "id": "2025-05-19-10:00-Aula 1 Grande-lkc.marta@gmail.com",
       "date": "2025-05-19",
       "day": "Lunedì",
@@ -23,6 +59,44 @@
       "bookedBy": null,
       "bookingTime": null,
       "professorEmail": "lkc.marta@gmail.com"
+    }
+  ],
+  "GUEST": [
+    {
+      "id": "2025-05-05-13:00-Aula 1 Grande-GUEST-Ospite_Test_1",
+      "date": "2025-05-05",
+      "day": "Martedì",
+      "time": "13:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": false,
+      "bookedBy": "Ospite: Ospite Test 1",
+      "bookingTime": "2025-05-01T21:17:08.608Z",
+      "professorEmail": "GUEST"
+    },
+    {
+      "id": "2025-05-12-13:00-Aula 1 Grande-GUEST-Anna",
+      "date": "2025-05-12",
+      "day": "Martedì",
+      "time": "13:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": false,
+      "bookedBy": "Ospite: Anna",
+      "bookingTime": "2025-05-01T21:21:11.392Z",
+      "professorEmail": "GUEST"
+    },
+    {
+      "id": "2025-05-12-14:00-Aula 1 Grande-GUEST-Ospite_test_2",
+      "date": "2025-05-12",
+      "day": "Martedì",
+      "time": "14:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": false,
+      "bookedBy": "Ospite: Ospite test 2",
+      "bookingTime": "2025-05-01T21:17:20.689Z",
+      "professorEmail": "GUEST"
     }
   ]
 }
