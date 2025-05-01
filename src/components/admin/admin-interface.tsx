@@ -25,11 +25,19 @@ import type { AllProfessorAvailability, ClassroomSchedule } from '@/types/app-da
 import { it } from 'date-fns/locale';
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 import { logError } from '@/services/logging'; // Import the error logging service
+import { Input } from '@/components/ui/input'; // Import Input
+import { Calendar } from '@/components/ui/calendar'; // Import Calendar
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'; // Import Popover
+import type { DateRange } from 'react-day-picker'; // Import DateRange
+import { Calendar as CalendarIcon } from "lucide-react"; // Import CalendarIcon
+import type { ScheduleConfiguration, AllScheduleConfigurations } from '@/types/schedule-configuration'; // Import configuration types
+
 
 // Constants for filenames
 const USERS_DATA_FILE = 'users';
 const AVAILABILITY_DATA_FILE = 'availability';
-const SCHEDULE_DATA_FILE = 'schedule';
+const SCHEDULE_DATA_FILE = 'schedule'; // Still used for the currently editable schedule
+const SCHEDULE_CONFIGURATIONS_FILE = 'scheduleConfigurations'; // New file for saved configs
 const LOGGED_IN_USER_KEY = 'loggedInUser'; // Session key (localStorage)
 
 // Define available classrooms (could be moved to a config file later)
@@ -55,11 +63,17 @@ export function AdminInterface() {
   const [pendingRegistrations, setPendingRegistrations] = useState<DisplayUser[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<DisplayUser[]>([]);
   const [professors, setProfessors] = useState<string[]>([]);
-  const [schedule, setSchedule] = useState<ClassroomSchedule>({}); // Use ClassroomSchedule type
+  const [schedule, setSchedule] = useState<ClassroomSchedule>({}); // Current editable schedule
   const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]);
   const [isManageProfessorsDialogOpen, setIsManageProfessorsDialogOpen] = useState(false);
   const [selectedUserForProfessorManagement, setSelectedUserForProfessorManagement] = useState<DisplayUser | null>(null);
   const [isLoading, setIsLoading] = useState(true); // Loading state
+
+  // New state for schedule configuration management
+  const [configName, setConfigName] = useState('');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [savedConfigurations, setSavedConfigurations] = useState<ScheduleConfiguration[]>([]);
+
 
   const {toast} = useToast();
 
@@ -86,9 +100,13 @@ export function AdminInterface() {
       const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
       console.log("[Admin] Availability data read.");
 
-      console.log("[Admin] Reading schedule data...");
+      console.log("[Admin] Reading current schedule data...");
       const loadedSchedule = await readData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {});
-      console.log("[Admin] Schedule data read.");
+      console.log("[Admin] Current schedule data read.");
+
+      console.log("[Admin] Reading saved schedule configurations...");
+      const loadedConfigurations = await readData<AllScheduleConfigurations>(SCHEDULE_CONFIGURATIONS_FILE, []);
+      console.log("[Admin] Saved schedule configurations read.");
 
       const loadedPending: DisplayUser[] = [];
       const loadedApproved: DisplayUser[] = [];
@@ -98,10 +116,11 @@ export function AdminInterface() {
       // Process Users
       console.log("[Admin] Processing user data...");
       Object.entries(allUsers).forEach(([email, userData]) => {
-         if (userData.role && ['student', 'professor', 'admin'].includes(userData.role) && typeof userData.approved === 'boolean') {
+         if (userData && userData.role && ['student', 'professor', 'admin'].includes(userData.role) && typeof userData.approved === 'boolean') {
             const name = email.split('@')[0];
             const userDisplayData: DisplayUser = {
               id: idCounter++, name: name, role: userData.role, email: email,
+              // Correctly reference the field name from UserData type
               assignedProfessorEmails: Array.isArray(userData.assignedProfessorEmail) ? userData.assignedProfessorEmail : null,
             };
 
@@ -129,9 +148,10 @@ export function AdminInterface() {
        setAllBookedSlots(sortSlots(loadedAllBooked));
         console.log(`[Admin] Processed ${loadedAllBooked.length} booked slots.`);
 
-       // Set Schedule
+       // Set Current Schedule and Saved Configurations
        setSchedule(loadedSchedule);
-       console.log("[Admin] Schedule set.");
+       setSavedConfigurations(loadedConfigurations.sort((a, b) => a.name.localeCompare(b.name))); // Sort by name
+       console.log("[Admin] Schedule and configurations set.");
        console.log("[Admin] Data loading complete.");
 
     } catch (error) {
@@ -143,6 +163,7 @@ export function AdminInterface() {
         setApprovedUsers([]);
         setProfessors([]);
         setSchedule({});
+        setSavedConfigurations([]); // Reset saved configurations as well
         setAllBookedSlots([]);
     } finally {
        setIsLoading(false);
@@ -155,39 +176,15 @@ export function AdminInterface() {
   }, [loadData]);
 
 
-  // Save schedule to file whenever it changes
+  // Save CURRENT schedule to file whenever it changes (e.g., for live editing)
+  // This saves the schedule being actively edited, not the named configurations yet.
   useEffect(() => {
-     // Avoid saving during initial load or if schedule hasn't changed meaningfully
      if (!isLoading && Object.keys(schedule).length > 0) {
-        console.log("[Admin] Schedule changed, attempting to save...");
         writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, schedule)
-          .then(() => console.log("[Admin] Schedule saved successfully."))
-          .catch(async (err) => { // Make async to use await
-            console.error("[Admin] Failed to save schedule:", err);
-            await logError(err, 'Admin Save Schedule'); // Log error to file
-            toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario delle aule." });
-        });
-     } else if (!isLoading && Object.keys(schedule).length === 0) {
-        // Handle case where schedule becomes empty after being loaded
-        // Check if file exists before attempting to write empty {}
-        // This prevents overwriting potentially valid empty data loaded initially
-        console.log("[Admin] Schedule is empty, checking if save is needed...");
-        readData(SCHEDULE_DATA_FILE, {}).then(existingSchedule => {
-            if (Object.keys(existingSchedule).length > 0) { // Only write if it wasn't already empty
-                console.log("[Admin] Existing schedule was not empty, saving empty schedule...");
-                writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {})
-                  .then(() => console.log("[Admin] Empty schedule saved successfully."))
-                  .catch(async (err) => { // Make async to use await
-                   console.error("[Admin] Failed to save empty schedule:", err);
-                   await logError(err, 'Admin Save Empty Schedule'); // Log error to file
-                    toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario delle aule." });
-                });
-            } else {
-                console.log("[Admin] Existing schedule was already empty, no save needed.");
-            }
-        }).catch(async (err) => { // Make async to use await
-            console.error("[Admin] Error reading schedule before saving empty:", err);
-            await logError(err, 'Admin Read Schedule Before Empty Save'); // Log error to file
+          .catch(async (err) => {
+            console.error("[Admin] Failed to save current schedule:", err);
+            await logError(err, 'Admin Save Current Schedule');
+            toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario corrente delle aule." });
         });
      }
   }, [schedule, isLoading, toast]); // Include isLoading and toast
@@ -215,7 +212,7 @@ export function AdminInterface() {
             // --- Update Local State Immediately ---
             setPendingRegistrations(prev => prev.filter(reg => reg.email !== email));
             // Ensure we pass the user object with updated approval status (implicitly true now)
-            setApprovedUsers(prev => [...prev, userToApprove]);
+            setApprovedUsers(prev => [...prev, userToApprove].sort((a, b) => a.email.localeCompare(b.email))); // Keep sorted
             // If the approved user is a professor, update the professors list too
              if (userToApprove.role === 'professor' && !professors.includes(email)) {
                   setProfessors(prev => [...prev, email].sort());
@@ -246,10 +243,7 @@ export function AdminInterface() {
                 title: "Registrazione Approvata",
                 description: `La registrazione per ${email} è stata approvata.`,
             });
-            console.log("[Admin] Approval successful. UI updated. Data refresh will happen on next full load.");
-            // Optionally, uncomment loadData() if strict consistency immediately after is required,
-            // but the UI should reflect the change now.
-            // await loadData();
+            console.log("[Admin] Approval successful. UI updated.");
         } else {
             console.error(`[Admin] User data not found or not pending: ${email}`);
             toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati o già processati." });
@@ -261,7 +255,6 @@ export function AdminInterface() {
             variant: "destructive",
             title: "Errore Approvazione Registrazione",
             description: `Impossibile approvare la registrazione per ${email}. Controlla errors.log per dettagli.`,
-            // description: `Impossibile approvare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
         });
     } finally {
        setIsLoading(false); // Reset loading state
@@ -302,7 +295,6 @@ const rejectRegistration = async (email: string) => {
              } catch (emailError: any) {
                 console.error(`[Admin] Errore invio email di rifiuto a ${email}:`, emailError);
                 await logError(emailError, `Admin Reject Registration (Email to ${email})`); // Log error
-                 // Optionally notify admin about email failure, but proceed with rejection
                  toast({ title: "Avviso", description: `Registrazione rifiutata per ${email}, ma errore nell'invio email.` });
              }
 
@@ -310,8 +302,7 @@ const rejectRegistration = async (email: string) => {
                 title: "Registrazione Rifiutata",
                 description: `La registrazione per ${email} è stata rifiutata ed eliminata.`,
             });
-             console.log("[Admin] Rejection successful. UI updated. Data refresh will happen on next full load.");
-            // Optionally reload data if needed: await loadData();
+             console.log("[Admin] Rejection successful. UI updated.");
         } else {
              console.error(`[Admin] Registration not found or user data missing for rejection: ${email}`);
              toast({ variant: "destructive", title: "Errore", description: "Registrazione non trovata o dati utente mancanti." });
@@ -323,7 +314,6 @@ const rejectRegistration = async (email: string) => {
             variant: "destructive",
             title: "Errore Rifiuto Registrazione",
             description: `Impossibile rifiutare la registrazione per ${email}. Controlla errors.log per dettagli.`,
-            // description: `Impossibile rifiutare la registrazione per ${email}. Errore: ${error.message || String(error)}`,
         });
     } finally {
         setIsLoading(false);
@@ -378,7 +368,7 @@ const rejectRegistration = async (email: string) => {
                      user.email === userEmail
                          ? { ...user, assignedProfessorEmails: assignedEmails.length > 0 ? assignedEmails : null }
                          : user
-                 )
+                 ).sort((a, b) => a.email.localeCompare(b.email)) // Keep sorted
              );
              // --- End Local State Update ---
 
@@ -389,8 +379,7 @@ const rejectRegistration = async (email: string) => {
              });
              setIsManageProfessorsDialogOpen(false);
              setSelectedUserForProfessorManagement(null);
-             console.log("[Admin] Professor assignment successful. UI updated. Data refresh will happen on next full load.");
-             // Optionally reload data: await loadData();
+             console.log("[Admin] Professor assignment successful. UI updated.");
          } else {
              console.error(`[Admin] User data not found for professor assignment: ${userEmail}`);
              toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
@@ -402,7 +391,6 @@ const rejectRegistration = async (email: string) => {
              variant: "destructive",
              title: "Errore Aggiornamento",
              description: `Impossibile aggiornare i professori assegnati. Controlla errors.log per dettagli.`,
-             // description: `Impossibile aggiornare i professori assegnati. Errore: ${error.message || String(error)}`,
          });
      } finally {
          setIsLoading(false);
@@ -417,6 +405,79 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
     setIsManageProfessorsDialogOpen(true);
 };
 
+ // --- Schedule Configuration Functions ---
+
+  const handleSaveConfiguration = async () => {
+      if (!configName.trim()) {
+        toast({ variant: "destructive", title: "Errore", description: "Inserire un nome per la configurazione." });
+        return;
+      }
+      if (!dateRange || !dateRange.from || !dateRange.to) {
+          toast({ variant: "destructive", title: "Errore", description: "Selezionare un intervallo di date valido." });
+          return;
+      }
+
+      const newConfig: ScheduleConfiguration = {
+          id: Date.now().toString(), // Simple unique ID for now
+          name: configName.trim(),
+          startDate: format(dateRange.from, 'yyyy-MM-dd'),
+          endDate: format(dateRange.to, 'yyyy-MM-dd'),
+          schedule: { ...schedule }, // Save a copy of the current schedule grid
+      };
+
+      setIsLoading(true);
+      try {
+          const currentConfigs = await readData<ScheduleConfiguration[]>(SCHEDULE_CONFIGURATIONS_FILE, []);
+          const updatedConfigs = [...currentConfigs, newConfig];
+          await writeData<ScheduleConfiguration[]>(SCHEDULE_CONFIGURATIONS_FILE, updatedConfigs);
+
+          setSavedConfigurations(updatedConfigs.sort((a, b) => a.name.localeCompare(b.name))); // Update local state
+          setConfigName(''); // Clear input fields
+          setDateRange(undefined);
+          // setSchedule({}); // Optionally clear the grid after saving, or keep it loaded
+
+          toast({ title: "Configurazione Salvata", description: `La configurazione "${newConfig.name}" è stata salvata.` });
+      } catch (error) {
+          console.error("[Admin] Failed to save schedule configuration:", error);
+          await logError(error, 'Admin Save Configuration');
+          toast({ variant: "destructive", title: "Errore Salvataggio Configurazione", description: "Impossibile salvare la configurazione." });
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
+  const handleLoadConfiguration = (configId: string) => {
+       const configToLoad = savedConfigurations.find(c => c.id === configId);
+       if (configToLoad) {
+           setSchedule(configToLoad.schedule);
+           setConfigName(configToLoad.name); // Optionally load name and dates back to fields
+           setDateRange({ from: parseISO(configToLoad.startDate), to: parseISO(configToLoad.endDate) });
+           toast({ title: "Configurazione Caricata", description: `Configurazione "${configToLoad.name}" caricata nella griglia.` });
+       } else {
+           toast({ variant: "destructive", title: "Errore", description: "Configurazione non trovata." });
+       }
+   };
+
+   const handleDeleteConfiguration = async (configId: string) => {
+      setIsLoading(true);
+      try {
+          const currentConfigs = await readData<ScheduleConfiguration[]>(SCHEDULE_CONFIGURATIONS_FILE, []);
+          const updatedConfigs = currentConfigs.filter(c => c.id !== configId);
+          await writeData<ScheduleConfiguration[]>(SCHEDULE_CONFIGURATIONS_FILE, updatedConfigs);
+
+          setSavedConfigurations(updatedConfigs.sort((a, b) => a.name.localeCompare(b.name))); // Update local state
+
+          toast({ title: "Configurazione Eliminata", description: `Configurazione rimossa con successo.` });
+      } catch (error) {
+          console.error("[Admin] Failed to delete schedule configuration:", error);
+          await logError(error, 'Admin Delete Configuration');
+          toast({ variant: "destructive", title: "Errore Eliminazione Configurazione", description: "Impossibile eliminare la configurazione." });
+      } finally {
+          setIsLoading(false);
+      }
+   };
+
+
  // Display loading indicator
  if (isLoading && (!pendingRegistrations.length && !approvedUsers.length)) { // Show loading only on initial load or if data is truly empty
    return <div className="flex justify-center items-center h-screen"><p>Caricamento dati...</p></div>;
@@ -428,25 +489,30 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Interfaccia Amministratore</CardTitle>
-          <CardDescription>Gestisci registrazioni utenti, disponibilità aule e visualizza le prenotazioni.</CardDescription>
+          <CardDescription>Gestisci registrazioni utenti, orari delle aule e visualizza le prenotazioni.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <Tabs defaultValue="classrooms" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
-              <TabsTrigger value="classrooms">Aule</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4"> {/* Adjusted grid columns */}
+              <TabsTrigger value="classrooms">Gestione Orario Aule</TabsTrigger>
+              <TabsTrigger value="configurations">Configurazioni Salvate</TabsTrigger>
               <TabsTrigger value="users">Utenti</TabsTrigger>
               <TabsTrigger value="bookings">Prenotazioni</TabsTrigger>
             </TabsList>
+
+            {/* Tab: Gestione Orario Aule */}
             <TabsContent value="classrooms">
               <Card>
                  <CardHeader>
-                     <CardTitle>Orario Aule</CardTitle>
-                     <CardDescription>Assegna professori agli slot orari nelle aule disponibili.</CardDescription>
+                     <CardTitle>Modifica Orario Corrente</CardTitle>
+                     <CardDescription>Assegna professori agli slot orari nelle aule. Questa è la griglia attualmente in modifica.</CardDescription>
                  </CardHeader>
                  <CardContent>
-                     <div className="overflow-x-auto">
+                    {/* Classroom Schedule Grid */}
+                     <div className="overflow-x-auto mb-6">
                          <Table>
-                             <TableHeader>
+                             {/* Table Header */}
+                              <TableHeader>
                                  <TableRow>
                                      <TableHead className="min-w-[80px] w-24 sticky left-0 bg-background z-10">Ora</TableHead>
                                      {days.map((day) => (
@@ -462,6 +528,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                      )}
                                  </TableRow>
                              </TableHeader>
+                             {/* Table Body */}
                              <TableBody>
                                  {timeSlots.map((time) => (
                                      <TableRow key={time}>
@@ -505,9 +572,112 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                              </TableBody>
                          </Table>
                      </div>
+
+                    {/* Save Configuration Section */}
+                    <Separator className="my-4" />
+                     <div className="grid gap-4 md:grid-cols-3">
+                        <div>
+                          <label htmlFor="configName" className="block text-sm font-medium mb-1">Nome Configurazione</label>
+                          <Input
+                            id="configName"
+                            placeholder="Es: Orario Standard Aprile"
+                            value={configName}
+                            onChange={(e) => setConfigName(e.target.value)}
+                            disabled={isLoading}
+                          />
+                        </div>
+                        <div className="md:col-span-1">
+                           <label htmlFor="dateRange" className="block text-sm font-medium mb-1">Intervallo Date</label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                <Button
+                                    id="dateRange"
+                                    variant={"outline"}
+                                    className={cn(
+                                    "w-full justify-start text-left font-normal",
+                                    !dateRange && "text-muted-foreground"
+                                    )}
+                                    disabled={isLoading}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {dateRange?.from ? (
+                                    dateRange.to ? (
+                                        <>
+                                        {format(dateRange.from, "dd/MM/y", { locale: it })} -{" "}
+                                        {format(dateRange.to, "dd/MM/y", { locale: it })}
+                                        </>
+                                    ) : (
+                                        format(dateRange.from, "dd/MM/y", { locale: it })
+                                    )
+                                    ) : (
+                                    <span>Seleziona intervallo date</span>
+                                    )}
+                                </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                    initialFocus
+                                    mode="range"
+                                    defaultMonth={dateRange?.from}
+                                    selected={dateRange}
+                                    onSelect={setDateRange}
+                                    numberOfMonths={2}
+                                    locale={it}
+                                />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <div className="flex items-end">
+                             <Button onClick={handleSaveConfiguration} disabled={isLoading || !configName || !dateRange?.from || !dateRange?.to} className="w-full">
+                                Salva Configurazione Corrente
+                             </Button>
+                        </div>
+                     </div>
                  </CardContent>
               </Card>
             </TabsContent>
+
+             {/* Tab: Configurazioni Salvate */}
+             <TabsContent value="configurations">
+                 <Card>
+                     <CardHeader>
+                         <CardTitle>Configurazioni Orario Salvate</CardTitle>
+                         <CardDescription>Carica o elimina configurazioni di orario salvate in precedenza.</CardDescription>
+                     </CardHeader>
+                     <CardContent>
+                         {isLoading ? <p>Caricamento configurazioni...</p> : savedConfigurations.length === 0 ? (
+                             <p className="text-muted-foreground">Nessuna configurazione salvata.</p>
+                         ) : (
+                             <Table>
+                                 <TableHeader>
+                                     <TableRow>
+                                         <TableHead>Nome</TableHead>
+                                         <TableHead>Data Inizio</TableHead>
+                                         <TableHead>Data Fine</TableHead>
+                                         <TableHead>Azioni</TableHead>
+                                     </TableRow>
+                                 </TableHeader>
+                                 <TableBody>
+                                     {savedConfigurations.map((config) => (
+                                         <TableRow key={config.id}>
+                                             <TableCell>{config.name}</TableCell>
+                                             <TableCell>{format(parseISO(config.startDate), 'dd/MM/yyyy', { locale: it })}</TableCell>
+                                             <TableCell>{format(parseISO(config.endDate), 'dd/MM/yyyy', { locale: it })}</TableCell>
+                                             <TableCell className="flex gap-2">
+                                                 <Button onClick={() => handleLoadConfiguration(config.id)} size="sm" variant="outline" disabled={isLoading}>Carica</Button>
+                                                 <Button onClick={() => handleDeleteConfiguration(config.id)} size="sm" variant="destructive" disabled={isLoading}>Elimina</Button>
+                                             </TableCell>
+                                         </TableRow>
+                                     ))}
+                                 </TableBody>
+                             </Table>
+                         )}
+                     </CardContent>
+                 </Card>
+             </TabsContent>
+
+
+            {/* Tab: Utenti */}
             <TabsContent value="users">
              <Card>
                  <CardHeader>
@@ -597,6 +767,8 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                  </CardContent>
              </Card>
             </TabsContent>
+
+             {/* Tab: Prenotazioni */}
             <TabsContent value="bookings">
                  <Card>
                      <CardHeader>

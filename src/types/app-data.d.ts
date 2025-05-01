@@ -1,28 +1,23 @@
 
-import type { UserData } from './user'; // Ensure UserData is imported
-import type { BookableSlot, ScheduleAssignment } from './schedule'; // Assuming schedule types are defined here or create the file
+import type { UserData } from './user';
+import type { BookableSlot } from './bookable-slot'; // Assuming this type exists
+import type { ScheduleAssignment } from './schedule-assignment'; // Assuming this type exists
+import type { ScheduleConfiguration } from './schedule-configuration'; // Import ScheduleConfiguration
 
-// Structure for storing all user data (indexed by email)
-// Make sure AllUsersData is exported
+// Structure for the users.json file
 export interface AllUsersData {
-  [email: string]: UserData;
+    [email: string]: UserData;
 }
 
-// Structure for storing all professor availability (indexed by professor email)
+// Structure for the allProfessorAvailability.json file
 export interface AllProfessorAvailability {
-  [professorEmail: string]: BookableSlot[];
+    [professorEmail: string]: BookableSlot[];
 }
 
-// Structure for storing the classroom schedule assignments (indexed by Day-Time-Classroom)
+// Structure for the classroomSchedule.json file (used for current editing)
 export interface ClassroomSchedule {
-  [scheduleKey: string]: ScheduleAssignment;
+    [scheduleKey: string]: ScheduleAssignment; // key: "Day-Time-Classroom"
 }
 
-// You might combine these into a single AppData structure if saving to one file,
-// or keep them separate if saving to different files (users.json, availability.json, schedule.json).
-// Example of combined structure (if using one file):
-// export interface AppData {
-//   users: AllUsersData;
-//   availability: AllProfessorAvailability;
-//   schedule: ClassroomSchedule;
-// }
+// Structure for the scheduleConfigurations.json file
+export type AllScheduleConfigurations = ScheduleConfiguration[];
