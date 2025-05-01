@@ -18,6 +18,8 @@
     "password": "8257619t",
     "role": "professor",
     "approved": true,
-    "assignedProfessorEmail": null
+    "assignedProfessorEmail": [
+      "ospite@creativeacademy.it"
+    ]
   }
 }
