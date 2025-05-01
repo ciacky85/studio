@@ -1,4 +1,3 @@
-
 'use client';
 
 import {useState, useEffect, useCallback} from 'react';
@@ -12,14 +11,15 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
-import {sendEmail} from '@/services/email';
-import {useToast} from "@/hooks/use-toast";
-import type { UserData, AllUsersData } from '@/types/user';
+import {sendEmail}from '@/services/email';
+import {useToast}from "@/hooks/use-toast";
+import type { UserData } from '@/types/user';
+import type { AllUsersData } from '@/types/app-data';
 import { Separator } from '@/components/ui/separator';
 import { format, parseISO } from 'date-fns';
 import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
 import { cn } from "@/lib/utils";
-import type {DisplayUser} from '@/types/display-user';
+import type {DisplayUser}from '@/types/display-user';
 import type { BookableSlot, ScheduleAssignment } from '@/types/schedule'; // Import schedule types
 import type { AllProfessorAvailability, ClassroomSchedule } from '@/types/app-data'; // Import app data types
 import { it } from 'date-fns/locale';
@@ -200,8 +200,10 @@ export function AdminInterface() {
         const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
         console.log("[Admin] Users data read for approval.");
         const userData = allUsers[email];
+        const userToApprove = pendingRegistrations.find(reg => reg.email === email);
 
-        if (userData) {
+
+        if (userData && userToApprove) {
             console.log(`[Admin] User data found for ${email}. Setting approved = true.`);
             userData.approved = true;
             userData.assignedProfessorEmail = userData.assignedProfessorEmail || null; // Ensure it's initialized
@@ -210,7 +212,17 @@ export function AdminInterface() {
             await writeData<AllUsersData>(USERS_DATA_FILE, allUsers); // Save updated users data
             console.log("[Admin] Users data updated and saved.");
 
-            // Send approval email
+            // --- Update Local State Immediately ---
+            setPendingRegistrations(prev => prev.filter(reg => reg.email !== email));
+            // Ensure we pass the user object with updated approval status (implicitly true now)
+            setApprovedUsers(prev => [...prev, userToApprove]);
+            // If the approved user is a professor, update the professors list too
+             if (userToApprove.role === 'professor' && !professors.includes(email)) {
+                  setProfessors(prev => [...prev, email].sort());
+             }
+            // --- End Local State Update ---
+
+            // Send approval email (after state update for UI responsiveness)
             try {
               console.log(`[Admin] Sending approval email to ${email}...`);
               await sendEmail({
@@ -234,11 +246,13 @@ export function AdminInterface() {
                 title: "Registrazione Approvata",
                 description: `La registrazione per ${email} è stata approvata.`,
             });
-            console.log("[Admin] Approval successful, reloading data...");
-            await loadData(); // Refresh all data after successful approval
+            console.log("[Admin] Approval successful. UI updated. Data refresh will happen on next full load.");
+            // Optionally, uncomment loadData() if strict consistency immediately after is required,
+            // but the UI should reflect the change now.
+            // await loadData();
         } else {
-            console.error(`[Admin] User data not found for approval: ${email}`);
-            toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
+            console.error(`[Admin] User data not found or not pending: ${email}`);
+            toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati o già processati." });
         }
     } catch (error: any) {
         console.error(`[Admin] Errore durante l'approvazione per ${email}:`, error);
@@ -272,7 +286,11 @@ const rejectRegistration = async (email: string) => {
             await writeData<AllUsersData>(USERS_DATA_FILE, allUsers); // Save the updated data
             console.log("[Admin] Users data updated and saved after rejection.");
 
-            // Send rejection email
+             // --- Update Local State Immediately ---
+            setPendingRegistrations(prev => prev.filter(reg => reg.email !== email));
+            // --- End Local State Update ---
+
+            // Send rejection email (after state update)
              try {
                console.log(`[Admin] Sending rejection email to ${email}...`);
                await sendEmail({
@@ -292,8 +310,8 @@ const rejectRegistration = async (email: string) => {
                 title: "Registrazione Rifiutata",
                 description: `La registrazione per ${email} è stata rifiutata ed eliminata.`,
             });
-            console.log("[Admin] Rejection successful, reloading data...");
-            await loadData(); // Refresh data
+             console.log("[Admin] Rejection successful. UI updated. Data refresh will happen on next full load.");
+            // Optionally reload data if needed: await loadData();
         } else {
              console.error(`[Admin] Registration not found or user data missing for rejection: ${email}`);
              toast({ variant: "destructive", title: "Errore", description: "Registrazione non trovata o dati utente mancanti." });
@@ -354,14 +372,25 @@ const rejectRegistration = async (email: string) => {
              await writeData<AllUsersData>(USERS_DATA_FILE, allUsers);
              console.log("[Admin] Users data updated and saved after professor assignment.");
 
+             // --- Update Local State Immediately ---
+             setApprovedUsers(prevUsers =>
+                 prevUsers.map(user =>
+                     user.email === userEmail
+                         ? { ...user, assignedProfessorEmails: assignedEmails.length > 0 ? assignedEmails : null }
+                         : user
+                 )
+             );
+             // --- End Local State Update ---
+
+
              toast({
                  title: "Professori Aggiornati",
                  description: `Le assegnazioni dei professori per ${userEmail} sono state aggiornate.`,
              });
              setIsManageProfessorsDialogOpen(false);
              setSelectedUserForProfessorManagement(null);
-             console.log("[Admin] Professor assignment successful, reloading data...");
-             await loadData(); // Refresh data to show changes in the UI immediately
+             console.log("[Admin] Professor assignment successful. UI updated. Data refresh will happen on next full load.");
+             // Optionally reload data: await loadData();
          } else {
              console.error(`[Admin] User data not found for professor assignment: ${userEmail}`);
              toast({ variant: "destructive", title: "Errore", description: "Dati utente non trovati." });
@@ -389,7 +418,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
 };
 
  // Display loading indicator
- if (isLoading) {
+ if (isLoading && (!pendingRegistrations.length && !approvedUsers.length)) { // Show loading only on initial load or if data is truly empty
    return <div className="flex justify-center items-center h-screen"><p>Caricamento dati...</p></div>;
  }
 
@@ -451,6 +480,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                                         <Select
                                                             value={assignedProfessor || 'unassigned'}
                                                             onValueChange={(value) => handleProfessorAssignmentChange(day, time, classroom, value)}
+                                                            disabled={isLoading} // Disable during load/save operations
                                                         >
                                                             <SelectTrigger className="w-full">
                                                                 <SelectValue placeholder="Assegna Professore">
@@ -486,7 +516,9 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                  </CardHeader>
                  <CardContent>
                      <div className="overflow-x-auto">
-                         {pendingRegistrations.length > 0 ? (
+                         {isLoading && pendingRegistrations.length === 0 && <p>Caricamento...</p>}
+                         {!isLoading && pendingRegistrations.length === 0 && <p>Nessuna registrazione in sospeso.</p>}
+                         {pendingRegistrations.length > 0 && (
                              <Table>
                                  <TableHeader>
                                      <TableRow>
@@ -510,8 +542,6 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                      ))}
                                  </TableBody>
                              </Table>
-                         ) : (
-                             <p>Nessuna registrazione in sospeso.</p>
                          )}
                      </div>
                  </CardContent>
@@ -524,7 +554,9 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                  </CardHeader>
                  <CardContent>
                      <div className="overflow-x-auto">
-                         {approvedUsers.length > 0 ? (
+                          {isLoading && approvedUsers.length === 0 && <p>Caricamento...</p>}
+                          {!isLoading && approvedUsers.length === 0 && <p>Nessun utente approvato trovato.</p>}
+                         {approvedUsers.length > 0 && (
                              <Table>
                                  <TableHeader>
                                      <TableRow>
@@ -560,8 +592,6 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                      ))}
                                  </TableBody>
                              </Table>
-                         ) : (
-                             <p>Nessun utente approvato trovato.</p>
                          )}
                      </div>
                  </CardContent>
@@ -575,7 +605,9 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                      </CardHeader>
                      <CardContent>
                          <div className="overflow-x-auto">
-                             {allBookedSlots.length > 0 ? (
+                             {isLoading && allBookedSlots.length === 0 && <p>Caricamento...</p>}
+                             {!isLoading && allBookedSlots.length === 0 && <p>Nessuna lezione prenotata al momento.</p>}
+                             {allBookedSlots.length > 0 && (
                                  <Table>
                                      <TableHeader>
                                          <TableRow>
@@ -600,8 +632,6 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                          ))}
                                      </TableBody>
                                  </Table>
-                             ) : (
-                                 <p>Nessuna lezione prenotata al momento.</p>
                              )}
                          </div>
                      </CardContent>
@@ -629,4 +659,3 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
     </>
   );
 }
-

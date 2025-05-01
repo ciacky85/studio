@@ -10,7 +10,7 @@ import {sendEmail} from '@/services/email'; // Import the email service
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 import {useToast} from "@/hooks/use-toast";
 import Link from 'next/link';
-import type { AllUsersData, UserData } from '@/types/user'; // Use correct types
+import type { UserData, AllUsersData } from '@/types/user'; // Use correct types
 import { logError } from '@/services/logging'; // Import the error logging service
 
 
@@ -29,6 +29,7 @@ export default function Register() {
   const isFormValid = email && password && role;
 
   const handleRegister = async () => {
+    // Reset error state if retrying
     if (registrationStatus === 'error') {
       setRegistrationStatus('idle');
     }
@@ -44,6 +45,7 @@ export default function Register() {
 
     setRegistrationStatus('pending');
     console.log(`[Register] Attempting registration for: ${email}, Role: ${role}`);
+
     try {
       // Read existing users data
       console.log(`[Register] Reading data from ${USERS_DATA_FILE}...`);
@@ -53,6 +55,8 @@ export default function Register() {
       // Check if user already exists
       if (allUsers[email]) {
           console.warn(`[Register] User already exists: ${email}`);
+          // Explicitly set status to error before throwing
+          setRegistrationStatus('error');
           throw new Error('Utente con questa email già esistente.');
       }
       console.log(`[Register] User ${email} does not exist, proceeding.`);
@@ -63,7 +67,7 @@ export default function Register() {
           password: password, // Store plain text password (INSECURE for real apps)
           role: role as 'student' | 'professor', // Cast role after validation
           approved: false, // Default to not approved
-          assignedProfessorEmail: null, // Initialize assigned professors as null
+          assignedProfessorEmails: null, // Initialize assigned professors as null
       };
       console.log(`[Register] New user data prepared for ${email}.`);
 
@@ -86,36 +90,39 @@ export default function Register() {
           html: `<p>Un nuovo utente si è registrato e richiede approvazione:</p><ul><li>Email: ${email}</li><li>Ruolo: ${role}</li></ul><p>Accedi al pannello di amministrazione per approvare o rifiutare.</p>`,
         });
         console.log(`[Register] Admin notification email sent successfully.`);
+        // Set success status ONLY after email attempt (even if email fails but is caught)
+        setRegistrationStatus('success');
+        toast({
+          title: "Registrazione Inviata",
+          description: "La tua registrazione richiede l'approvazione dell'amministratore. Sarai avvisato una volta approvato.",
+        });
       } catch (emailError: any) {
         console.error(`[Register] Failed to send admin notification email, but registration data was saved:`, emailError);
         await logError(emailError, 'Register (Admin Notification)');
+        // Set success status even if email fails, but show warning toast
+        setRegistrationStatus('success');
         // Notify user about successful registration but potential email issue
         toast({
             title: "Registrazione Inviata (con avviso)",
-            description: "La tua registrazione è stata salvata ma potrebbe esserci stato un problema nell'invio della notifica all'amministratore.",
+            description: "La tua registrazione è stata salvata ma c'è stato un problema nell'invio della notifica all'amministratore.",
+            variant: "default", // Use default variant for warning
         });
-        // Continue with the success flow despite email error
       }
 
 
-      setRegistrationStatus('success');
-      toast({
-        title: "Registrazione Inviata",
-        description: "La tua registrazione richiede l'approvazione dell'amministratore. Sarai avvisato una volta approvato.",
-      });
-
-      // Clear form fields
+      // Clear form fields only on complete success (including email attempt)
       setEmail('');
       setPassword('');
       setRole('');
 
-      // Redirect to login after delay
-      // setTimeout(() => router.push('/'), 3000); // Temporarily disable redirect for easier debugging if needed
+      // Redirect to login after delay - Consider removing or shortening delay
+      // setTimeout(() => router.push('/'), 3000);
 
     } catch (error: any) {
       // Log the detailed error to the server console AND the log file
       console.error('[Register] REGISTRAZIONE FALLITA:', error);
       await logError(error, 'Register (Main Catch)'); // Log the error to file
+      // Ensure status is set to error here
       setRegistrationStatus('error');
       toast({
         variant: "destructive",
@@ -124,6 +131,8 @@ export default function Register() {
         description: `Si è verificato un errore durante la registrazione: ${error?.message ?? 'Errore sconosciuto'}. Controlla errors.log per i dettagli.`,
         // description: error.message || "Si è verificato un errore inaspettato. Per favore riprova.", // Original message
       });
+       // Clear only password on error, keep email and role
+       setPassword('');
     }
   };
 
@@ -186,7 +195,7 @@ export default function Register() {
               {registrationStatus === 'pending'
                 ? 'Registrazione...'
                 : registrationStatus === 'success'
-                ? 'Inviato!'
+                ? 'Registrazione Inviata!' // Changed text for clarity
                 : registrationStatus === 'error'
                 ? 'Riprova Registrazione'
                 : 'Registrati'}
@@ -201,4 +210,3 @@ export default function Register() {
     </>
   );
 }
-
