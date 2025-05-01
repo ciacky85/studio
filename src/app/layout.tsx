@@ -1,6 +1,7 @@
 
 import type {Metadata} from 'next';
-import type { LayoutProps } from 'next/app'; // Import LayoutProps
+// Remove LayoutProps import from 'next/app' as it's for Pages Router
+// import type { LayoutProps } from 'next/app';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
@@ -23,10 +24,12 @@ export const metadata: Metadata = {
   description: 'Gestore Orario Aule - Generato da Firebase Studio. Data is stored in the /config directory.', // Added note about data storage
 };
 
-// Use LayoutProps for the component props
+// Correct the prop type for App Router layout
 export default function RootLayout({
   children,
-}: LayoutProps) { // Use LayoutProps here
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}>
