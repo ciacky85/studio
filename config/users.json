@@ -1,0 +1,9 @@
+{
+  "carlo.checchi.spam@gmail.com": {
+    "password": "8257619t",
+    "role": "student",
+    "approved": true,
+    "assignedProfessorEmails": null,
+    "assignedProfessorEmail": null
+  }
+}

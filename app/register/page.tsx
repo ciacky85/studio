@@ -1,3 +1,4 @@
+
 'use client';
 
 import {useState} from 'react';
@@ -67,7 +68,7 @@ export default function Register() {
           password: password, // Store plain text password (INSECURE for real apps)
           role: role as 'student' | 'professor', // Cast role after validation
           approved: false, // Default to not approved
-          assignedProfessorEmails: null, // Initialize assigned professors as null
+          assignedProfessorEmail: null, // Initialize assigned professors as null
       };
       console.log(`[Register] New user data prepared for ${email}.`);
 
@@ -210,3 +211,4 @@ export default function Register() {
     </>
   );
 }
+
