@@ -5,5 +5,11 @@
     "approved": true,
     "assignedProfessorEmails": null,
     "assignedProfessorEmail": null
+  },
+  "lkc.marta@gmail.com": {
+    "password": "8257619t",
+    "role": "professor",
+    "approved": true,
+    "assignedProfessorEmail": null
   }
 }

@@ -16,11 +16,11 @@ import {useToast}from "@/hooks/use-toast";
 import type { UserData } from '@/types/user';
 import type { AllUsersData } from '@/types/app-data';
 import { Separator } from '@/components/ui/separator';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isWithinInterval, startOfDay } from 'date-fns';
 import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
 import { cn } from "@/lib/utils";
 import type {DisplayUser}from '@/types/display-user';
-import type { BookableSlot, ScheduleAssignment } from '@/types/schedule'; // Import schedule types
+import type { BookableSlot, ScheduleAssignment, BookingViewSlot } from '@/types/schedule'; // Import schedule types
 import type { AllProfessorAvailability, ClassroomSchedule } from '@/types/app-data'; // Import app data types
 import { it } from 'date-fns/locale';
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
@@ -36,8 +36,8 @@ import type { ScheduleConfiguration, AllScheduleConfigurations } from '@/types/s
 // Constants for filenames
 const USERS_DATA_FILE = 'users';
 const AVAILABILITY_DATA_FILE = 'availability';
-const SCHEDULE_DATA_FILE = 'schedule'; // Still used for the currently editable schedule
-const SCHEDULE_CONFIGURATIONS_FILE = 'scheduleConfigurations'; // New file for saved configs
+const SCHEDULE_DATA_FILE = 'schedule'; // Represents the *currently being edited* schedule
+const SCHEDULE_CONFIGURATIONS_FILE = 'scheduleConfigurations'; // Stores saved, named configurations
 const LOGGED_IN_USER_KEY = 'loggedInUser'; // Session key (localStorage)
 
 // Define available classrooms (could be moved to a config file later)
@@ -51,11 +51,29 @@ const professorColors = [
   'bg-emerald-100 dark:bg-emerald-900',
 ];
 
+// Helper function to find the active schedule configuration for a given date
+const findActiveConfiguration = (date: Date, configurations: ScheduleConfiguration[]): ScheduleConfiguration | null => {
+    const targetDate = startOfDay(date);
+    return configurations.find(config => {
+        try {
+            const startDate = startOfDay(parseISO(config.startDate));
+            const endDate = startOfDay(parseISO(config.endDate));
+            return isWithinInterval(targetDate, { start: startDate, end: endDate });
+        } catch (e) {
+            console.error(`Error parsing dates for configuration ${config.id}:`, e);
+            return false;
+        }
+    }) || null;
+};
+
+
 // Function to get a color class based on professor email
 const getProfessorColor = (professorEmail: string, allProfessors: string[]): string => {
+    if (!professorEmail) {
+        return 'bg-background'; // Default background if no professor is assigned
+    }
     const index = allProfessors.indexOf(professorEmail);
-    // Ensure a default background even if no professor is assigned or found
-    return index === -1 ? 'bg-background' : professorColors[index % professorColors.length];
+    return index === -1 ? 'bg-gray-100 dark:bg-gray-800' : professorColors[index % professorColors.length]; // Fallback color
 };
 
 
@@ -69,7 +87,7 @@ export function AdminInterface() {
   const [selectedUserForProfessorManagement, setSelectedUserForProfessorManagement] = useState<DisplayUser | null>(null);
   const [isLoading, setIsLoading] = useState(true); // Loading state
 
-  // New state for schedule configuration management
+  // State for schedule configuration management
   const [configName, setConfigName] = useState('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [savedConfigurations, setSavedConfigurations] = useState<ScheduleConfiguration[]>([]);
@@ -100,7 +118,7 @@ export function AdminInterface() {
       const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
       console.log("[Admin] Availability data read.");
 
-      console.log("[Admin] Reading current schedule data...");
+      console.log("[Admin] Reading current schedule data (for editing)...");
       const loadedSchedule = await readData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {});
       console.log("[Admin] Current schedule data read.");
 
@@ -120,7 +138,6 @@ export function AdminInterface() {
             const name = email.split('@')[0];
             const userDisplayData: DisplayUser = {
               id: idCounter++, name: name, role: userData.role, email: email,
-              // Correctly reference the field name from UserData type
               assignedProfessorEmails: Array.isArray(userData.assignedProfessorEmail) ? userData.assignedProfessorEmail : null,
             };
 
@@ -148,7 +165,7 @@ export function AdminInterface() {
        setAllBookedSlots(sortSlots(loadedAllBooked));
         console.log(`[Admin] Processed ${loadedAllBooked.length} booked slots.`);
 
-       // Set Current Schedule and Saved Configurations
+       // Set Current Schedule (for editing) and Saved Configurations
        setSchedule(loadedSchedule);
        setSavedConfigurations(loadedConfigurations.sort((a, b) => a.name.localeCompare(b.name))); // Sort by name
        console.log("[Admin] Schedule and configurations set.");
@@ -176,8 +193,7 @@ export function AdminInterface() {
   }, [loadData]);
 
 
-  // Save CURRENT schedule to file whenever it changes (e.g., for live editing)
-  // This saves the schedule being actively edited, not the named configurations yet.
+  // Save CURRENT schedule (the one being edited) to file whenever it changes
   useEffect(() => {
      if (!isLoading && Object.keys(schedule).length > 0) {
         writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, schedule)
@@ -186,6 +202,15 @@ export function AdminInterface() {
             await logError(err, 'Admin Save Current Schedule');
             toast({ variant: "destructive", title: "Errore Salvataggio Orario", description: "Impossibile salvare l'orario corrente delle aule." });
         });
+     }
+     // Also save if schedule becomes empty (e.g., after reset)
+     else if (!isLoading && Object.keys(schedule).length === 0) {
+         writeData<ClassroomSchedule>(SCHEDULE_DATA_FILE, {}) // Write empty object
+           .catch(async (err) => {
+             console.error("[Admin] Failed to save empty current schedule:", err);
+             await logError(err, 'Admin Save Empty Current Schedule');
+             // Optional: toast notification for failure to save empty schedule
+         });
      }
   }, [schedule, isLoading, toast]); // Include isLoading and toast
 
@@ -434,7 +459,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
           setSavedConfigurations(updatedConfigs.sort((a, b) => a.name.localeCompare(b.name))); // Update local state
           setConfigName(''); // Clear input fields
           setDateRange(undefined);
-          // setSchedule({}); // Optionally clear the grid after saving, or keep it loaded
+          setSchedule({}); // Reset the editable schedule grid to empty
 
           toast({ title: "Configurazione Salvata", description: `La configurazione "${newConfig.name}" è stata salvata.` });
       } catch (error) {
@@ -449,10 +474,10 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
   const handleLoadConfiguration = (configId: string) => {
        const configToLoad = savedConfigurations.find(c => c.id === configId);
        if (configToLoad) {
-           setSchedule(configToLoad.schedule);
-           setConfigName(configToLoad.name); // Optionally load name and dates back to fields
+           setSchedule(configToLoad.schedule); // Load the saved grid into the editable schedule
+           setConfigName(configToLoad.name); // Load name and dates back to fields for reference/editing
            setDateRange({ from: parseISO(configToLoad.startDate), to: parseISO(configToLoad.endDate) });
-           toast({ title: "Configurazione Caricata", description: `Configurazione "${configToLoad.name}" caricata nella griglia.` });
+           toast({ title: "Configurazione Caricata", description: `Configurazione "${configToLoad.name}" caricata nella griglia per la modifica.` });
        } else {
            toast({ variant: "destructive", title: "Errore", description: "Configurazione non trovata." });
        }
@@ -505,7 +530,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
               <Card>
                  <CardHeader>
                      <CardTitle>Modifica Orario Corrente</CardTitle>
-                     <CardDescription>Assegna professori agli slot orari nelle aule. Questa è la griglia attualmente in modifica.</CardDescription>
+                     <CardDescription>Assegna professori agli slot orari nelle aule. Questa è la griglia attualmente in modifica. Salva questa configurazione con un nome e un intervallo di date.</CardDescription>
                  </CardHeader>
                  <CardContent>
                     {/* Classroom Schedule Grid */}
@@ -538,7 +563,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                                 const scheduleKey = `${day}-${time}-${classroom}`;
                                                 const assignment = schedule[scheduleKey];
                                                 const assignedProfessor = assignment?.professor || '';
-                                                const professorColorClass = assignedProfessor ? getProfessorColor(assignedProfessor, professors) : 'bg-background';
+                                                const professorColorClass = getProfessorColor(assignedProfessor, professors); // Use helper function
                                                 return (
                                                     <TableCell
                                                         key={scheduleKey}
@@ -587,7 +612,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                           />
                         </div>
                         <div className="md:col-span-1">
-                           <label htmlFor="dateRange" className="block text-sm font-medium mb-1">Intervallo Date</label>
+                           <label htmlFor="dateRange" className="block text-sm font-medium mb-1">Intervallo Date Validità</label>
                             <Popover>
                                 <PopoverTrigger asChild>
                                 <Button
@@ -629,7 +654,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                         </div>
                         <div className="flex items-end">
                              <Button onClick={handleSaveConfiguration} disabled={isLoading || !configName || !dateRange?.from || !dateRange?.to} className="w-full">
-                                Salva Configurazione Corrente
+                                Salva Configurazione Orario
                              </Button>
                         </div>
                      </div>
