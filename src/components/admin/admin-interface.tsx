@@ -31,7 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { DateRange } from 'react-day-picker'; // Import DateRange
 import { Calendar as CalendarIcon } from "lucide-react"; // Import CalendarIcon
 import type { ScheduleConfiguration, AllScheduleConfigurations } from '@/types/schedule-configuration'; // Import configuration types
-
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'; // Import AlertDialog components
 
 // Constants for filenames
 const USERS_DATA_FILE = 'users';
@@ -66,6 +66,29 @@ const findActiveConfiguration = (date: Date, configurations: ScheduleConfigurati
     }) || null;
 };
 
+// Helper function for deep equality check
+function deepEqual(obj1: any, obj2: any): boolean {
+  if (obj1 === obj2) return true;
+
+  if (obj1 === null || typeof obj1 !== "object" || obj2 === null || typeof obj2 !== "object") {
+    return false;
+  }
+
+  const keys1 = Object.keys(obj1).sort(); // Sort keys for consistent comparison
+  const keys2 = Object.keys(obj2).sort();
+
+  if (keys1.length !== keys2.length) return false;
+
+  for (let i = 0; i < keys1.length; i++) {
+    const key = keys1[i];
+    if (key !== keys2[i] || !deepEqual(obj1[key], obj2[key])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 
 // Function to get a color class based on professor email
 const getProfessorColor = (professorEmail: string, allProfessors: string[]): string => {
@@ -91,6 +114,11 @@ export function AdminInterface() {
   const [configName, setConfigName] = useState('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [savedConfigurations, setSavedConfigurations] = useState<ScheduleConfiguration[]>([]);
+
+  // State for overwrite confirmation dialog
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
+  const [configToOverwriteId, setConfigToOverwriteId] = useState<string | null>(null);
+  const [configToSave, setConfigToSave] = useState<ScheduleConfiguration | null>(null);
 
 
   const {toast} = useToast();
@@ -432,44 +460,92 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
 
  // --- Schedule Configuration Functions ---
 
-  const handleSaveConfiguration = async () => {
-      if (!configName.trim()) {
+ // Function to save or potentially trigger overwrite confirmation
+ const initiateSaveConfiguration = async () => {
+    if (!configName.trim()) {
         toast({ variant: "destructive", title: "Errore", description: "Inserire un nome per la configurazione." });
         return;
-      }
-      if (!dateRange || !dateRange.from || !dateRange.to) {
-          toast({ variant: "destructive", title: "Errore", description: "Selezionare un intervallo di date valido." });
-          return;
-      }
+    }
+    if (!dateRange || !dateRange.from || !dateRange.to) {
+        toast({ variant: "destructive", title: "Errore", description: "Selezionare un intervallo di date valido." });
+        return;
+    }
 
-      const newConfig: ScheduleConfiguration = {
-          id: Date.now().toString(), // Simple unique ID for now
-          name: configName.trim(),
-          startDate: format(dateRange.from, 'yyyy-MM-dd'),
-          endDate: format(dateRange.to, 'yyyy-MM-dd'),
-          schedule: { ...schedule }, // Save a copy of the current schedule grid
-      };
+    const newConfigData: Omit<ScheduleConfiguration, 'id'> = {
+        name: configName.trim(),
+        startDate: format(dateRange.from, 'yyyy-MM-dd'),
+        endDate: format(dateRange.to, 'yyyy-MM-dd'),
+        schedule: { ...schedule }, // Save a copy of the current schedule grid
+    };
 
-      setIsLoading(true);
-      try {
-          const currentConfigs = await readData<ScheduleConfiguration[]>(SCHEDULE_CONFIGURATIONS_FILE, []);
-          const updatedConfigs = [...currentConfigs, newConfig];
-          await writeData<ScheduleConfiguration[]>(SCHEDULE_CONFIGURATIONS_FILE, updatedConfigs);
+    // Check if an existing configuration has the same name, dates, AND schedule content
+    const existingConfig = savedConfigurations.find(
+        (c) =>
+            c.name === newConfigData.name &&
+            c.startDate === newConfigData.startDate &&
+            c.endDate === newConfigData.endDate &&
+            deepEqual(c.schedule, newConfigData.schedule) // Deep check schedule content
+    );
 
-          setSavedConfigurations(updatedConfigs.sort((a, b) => a.name.localeCompare(b.name))); // Update local state
-          setConfigName(''); // Clear input fields
-          setDateRange(undefined);
-          setSchedule({}); // Reset the editable schedule grid to empty
+    if (existingConfig) {
+        // If exact match found, inform user and do nothing
+        toast({ title: "Configurazione Esistente", description: "Una configurazione identica esiste già. Nessuna modifica apportata." });
+        return;
+    }
 
-          toast({ title: "Configurazione Salvata", description: `La configurazione "${newConfig.name}" è stata salvata.` });
-      } catch (error) {
-          console.error("[Admin] Failed to save schedule configuration:", error);
-          await logError(error, 'Admin Save Configuration');
-          toast({ variant: "destructive", title: "Errore Salvataggio Configurazione", description: "Impossibile salvare la configurazione." });
-      } finally {
-          setIsLoading(false);
-      }
-  };
+    // Check if an existing configuration has the same name (but different dates/content)
+    const configWithSameName = savedConfigurations.find(c => c.name === newConfigData.name);
+    const newConfigComplete: ScheduleConfiguration = { ...newConfigData, id: configWithSameName ? configWithSameName.id : Date.now().toString() };
+
+    if (configWithSameName) {
+        // Prompt for overwrite
+        setConfigToSave(newConfigComplete); // Store the potential config to save
+        setConfigToOverwriteId(configWithSameName.id); // Store the ID to overwrite
+        setShowOverwriteConfirm(true);
+    } else {
+        // No existing config with the same name, save directly
+        await saveConfiguration(newConfigComplete);
+    }
+};
+
+// Actual save function (can be called directly or after confirmation)
+const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite = false) => {
+    setIsLoading(true);
+    try {
+        const currentConfigs = await readData<ScheduleConfiguration[]>(SCHEDULE_CONFIGURATIONS_FILE, []);
+        let updatedConfigs;
+
+        if (overwrite) {
+            updatedConfigs = currentConfigs.map(c => c.id === configToSave.id ? configToSave : c);
+        } else {
+            // Check for ID collision just in case (highly unlikely with timestamp)
+             if (currentConfigs.some(c => c.id === configToSave.id)) {
+                  configToSave.id = Date.now().toString() + Math.random().toString(16).slice(2); // Ensure unique ID
+             }
+            updatedConfigs = [...currentConfigs, configToSave];
+        }
+
+
+        await writeData<ScheduleConfiguration[]>(SCHEDULE_CONFIGURATIONS_FILE, updatedConfigs);
+
+        setSavedConfigurations(updatedConfigs.sort((a, b) => a.name.localeCompare(b.name))); // Update local state
+        setConfigName(''); // Clear input fields
+        setDateRange(undefined);
+        setSchedule({}); // Reset the editable schedule grid to empty
+
+        toast({ title: overwrite ? "Configurazione Aggiornata" : "Configurazione Salvata", description: `La configurazione "${configToSave.name}" è stata ${overwrite ? 'aggiornata' : 'salvata'}.` });
+    } catch (error) {
+        console.error("[Admin] Failed to save schedule configuration:", error);
+        await logError(error, 'Admin Save Configuration');
+        toast({ variant: "destructive", title: "Errore Salvataggio Configurazione", description: "Impossibile salvare la configurazione." });
+    } finally {
+        setIsLoading(false);
+        setConfigToSave(null); // Clear temporary state
+        setConfigToOverwriteId(null);
+        setShowOverwriteConfirm(false); // Close dialog if open
+    }
+};
+
 
   const handleLoadConfiguration = (configId: string) => {
        const configToLoad = savedConfigurations.find(c => c.id === configId);
@@ -500,6 +576,11 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
       } finally {
           setIsLoading(false);
       }
+   };
+
+   const handleClearTable = () => {
+      setSchedule({});
+      toast({ title: "Tabella Pulita", description: "La griglia di assegnazione è stata resettata." });
    };
 
 
@@ -598,9 +679,9 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                          </Table>
                      </div>
 
-                    {/* Save Configuration Section */}
+                    {/* Save/Clear Configuration Section */}
                     <Separator className="my-4" />
-                     <div className="grid gap-4 md:grid-cols-3">
+                     <div className="grid gap-4 md:grid-cols-4"> {/* Adjusted for clear button */}
                         <div>
                           <label htmlFor="configName" className="block text-sm font-medium mb-1">Nome Configurazione</label>
                           <Input
@@ -652,8 +733,13 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
                                 </PopoverContent>
                             </Popover>
                         </div>
+                         <div className="flex items-end">
+                             <Button onClick={handleClearTable} variant="outline" disabled={isLoading} className="w-full">
+                                Pulisci Tabella
+                             </Button>
+                        </div>
                         <div className="flex items-end">
-                             <Button onClick={handleSaveConfiguration} disabled={isLoading || !configName || !dateRange?.from || !dateRange?.to} className="w-full">
+                             <Button onClick={initiateSaveConfiguration} disabled={isLoading || !configName || !dateRange?.from || !dateRange?.to} className="w-full">
                                 Salva Configurazione Orario
                              </Button>
                         </div>
@@ -853,6 +939,34 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
             isLoading={isLoading} // Pass loading state
         />
     )}
+     {/* Dialog for Overwrite Confirmation */}
+     <AlertDialog open={showOverwriteConfirm} onOpenChange={setShowOverwriteConfirm}>
+       <AlertDialogContent>
+         <AlertDialogHeader>
+           <AlertDialogTitle>Configurazione Esistente</AlertDialogTitle>
+           <AlertDialogDescription>
+             Esiste già una configurazione con il nome "{configToSave?.name}". Vuoi sovrascriverla con i nuovi dati (intervallo date e assegnazioni)?
+           </AlertDialogDescription>
+         </AlertDialogHeader>
+         <AlertDialogFooter>
+           <AlertDialogCancel onClick={() => {
+                setConfigToSave(null);
+                setConfigToOverwriteId(null);
+                setShowOverwriteConfirm(false);
+            }} disabled={isLoading}>
+                Annulla
+            </AlertDialogCancel>
+           <AlertDialogAction onClick={() => {
+                if (configToSave && configToOverwriteId) {
+                     saveConfiguration(configToSave, true); // Proceed with overwrite
+                }
+            }} disabled={isLoading}>
+                {isLoading ? 'Sovrascrittura...' : 'Sovrascrivi'}
+           </AlertDialogAction>
+         </AlertDialogFooter>
+       </AlertDialogContent>
+     </AlertDialog>
     </>
   );
 }
+

@@ -1,17 +1,23 @@
 [
   {
-    "id": "1746120721979",
-    "name": "Maggio Marta",
+    "id": "1746121492463",
+    "name": "Marta Maggio",
     "startDate": "2025-05-01",
     "endDate": "2025-05-31",
     "schedule": {
       "Lunedì-07:00-Aula 1 Grande": {
-        "professor": "lkc.marta@gmail.com"
+        "professor": ""
       },
       "Lunedì-08:00-Aula 1 Grande": {
-        "professor": "lkc.marta@gmail.com"
+        "professor": ""
       },
       "Lunedì-09:00-Aula 1 Grande": {
+        "professor": ""
+      },
+      "Lunedì-10:00-Aula 1 Grande": {
+        "professor": "lkc.marta@gmail.com"
+      },
+      "Lunedì-11:00-Aula 1 Grande": {
         "professor": "lkc.marta@gmail.com"
       }
     }

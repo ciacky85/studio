@@ -1,0 +1,28 @@
+{
+  "lkc.marta@gmail.com": [
+    {
+      "id": "2025-05-19-10:00-Aula 1 Grande-lkc.marta@gmail.com",
+      "date": "2025-05-19",
+      "day": "Lunedì",
+      "time": "10:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
+      "professorEmail": "lkc.marta@gmail.com"
+    },
+    {
+      "id": "2025-05-19-11:00-Aula 1 Grande-lkc.marta@gmail.com",
+      "date": "2025-05-19",
+      "day": "Lunedì",
+      "time": "11:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": false,
+      "bookedBy": null,
+      "bookingTime": null,
+      "professorEmail": "lkc.marta@gmail.com"
+    }
+  ]
+}
