@@ -37,21 +37,17 @@ export function ManageUserProfessorsDialog({
     const [selectedProfessors, setSelectedProfessors] = useState<string[]>([]);
 
     useEffect(() => {
+        // Initialize selected professors based on the user's current assignments
+        // Keep the existing logic for initialization
         if (user && Array.isArray(user.assignedProfessorEmails)) {
-             setSelectedProfessors(
-                 user.role === 'professor'
-                     ? user.assignedProfessorEmails.filter(email => email !== user.email)
-                     : user.assignedProfessorEmails
-             );
+             setSelectedProfessors(user.assignedProfessorEmails); // Always initialize with the current list
         } else {
             setSelectedProfessors([]);
         }
     }, [user, isOpen]);
 
     const handleCheckboxChange = (professorEmail: string, checked: boolean) => {
-        if (user?.role === 'professor' && professorEmail === user.email) {
-             return;
-        }
+        // Allow selecting/deselecting any professor from the list
         setSelectedProfessors(prev => checked ? [...prev, professorEmail] : prev.filter(email => email !== professorEmail));
     };
 
@@ -61,9 +57,8 @@ export function ManageUserProfessorsDialog({
         }
     };
 
-    const assignableProfessors = user?.role === 'professor'
-        ? allProfessors.filter(profEmail => profEmail !== user.email)
-        : allProfessors;
+    // Use the full list of professors, no longer filtering out the current user if they are a professor
+    const assignableProfessors = allProfessors;
 
     if (!user || user.role === 'admin') return null;
 
@@ -73,7 +68,7 @@ export function ManageUserProfessorsDialog({
                 <DialogHeader>
                     <DialogTitle>Gestisci Professori per {user.email} ({user.role === 'student' ? 'Studente' : 'Professore'})</DialogTitle>
                     <DialogDescription>
-                        Seleziona i professori da cui questo {user.role === 'student' ? 'studente' : 'professore'} può prenotare lezioni.
+                        Seleziona i professori {user.role === 'student' ? 'da cui questo studente può prenotare lezioni' : 'che questo professore può prenotare o da cui può essere prenotato'}.
                     </DialogDescription>
                 </DialogHeader>
                 <ScrollArea className="h-72 w-full rounded-md border p-4">
@@ -85,7 +80,7 @@ export function ManageUserProfessorsDialog({
                                         id={`prof-${profEmail}`}
                                         checked={selectedProfessors.includes(profEmail)}
                                         onCheckedChange={(checked) => handleCheckboxChange(profEmail, !!checked)}
-                                        disabled={(user?.role === 'professor' && profEmail === user.email) || isLoading} // Disable during load
+                                        disabled={isLoading} // Disable all checkboxes during load/save
                                     />
                                     <Label
                                         htmlFor={`prof-${profEmail}`}
@@ -96,7 +91,7 @@ export function ManageUserProfessorsDialog({
                                 </div>
                             ))
                         ) : (
-                            <p className="text-sm text-muted-foreground">Nessun altro professore disponibile per l'assegnazione.</p>
+                            <p className="text-sm text-muted-foreground">Nessun professore disponibile per l'assegnazione.</p>
                         )}
                     </div>
                 </ScrollArea>
