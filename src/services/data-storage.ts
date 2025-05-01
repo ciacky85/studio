@@ -1,8 +1,8 @@
-
 'use server';
 
 import fs from 'fs/promises';
 import path from 'path';
+import { logError } from '@/services/logging'; // Import logging
 
 // Base directory for storing data files inside the container
 // This should correspond to the volume mount point in Docker
@@ -17,8 +17,11 @@ const ensureConfigDir = async (): Promise<void> => {
   } catch (error: any) {
     // Ignore EEXIST error (directory already exists)
     if (error.code !== 'EEXIST') {
-      console.error(`Error creating config directory ${CONFIG_DIR}:`, error);
-      throw new Error('Could not create configuration directory.');
+      console.error(`[Storage] Error creating config directory ${CONFIG_DIR}:`, error);
+      // Log the error but allow the operation to potentially continue
+      await logError(error, 'Ensure Config Dir');
+      // Optionally re-throw if directory creation is absolutely critical
+      // throw new Error('Could not create configuration directory.');
     }
   }
 };
@@ -33,23 +36,29 @@ const ensureConfigDir = async (): Promise<void> => {
 export const readData = async <T>(filename: string, defaultValue: T): Promise<T> => {
   await ensureConfigDir(); // Ensure directory exists before reading
   const filePath = path.join(CONFIG_DIR, `${filename}.json`);
+  console.log(`[Storage] Reading data from: ${filePath}`); // Log read attempt
+
   try {
     const fileContent = await fs.readFile(filePath, 'utf-8');
-    if (!fileContent) {
+    if (!fileContent.trim()) { // Check for empty or whitespace-only content
+      console.log(`[Storage] File ${filePath} is empty, returning default value.`);
       return defaultValue; // Return default if file is empty
     }
     // Add detailed error logging for parsing
     try {
       const parsedData = JSON.parse(fileContent) as T;
       // Basic validation: check if parsedData is not null and is an object (for most cases)
-      if (parsedData !== null && typeof parsedData === 'object') {
+      // or an array (for configurations)
+      if (parsedData !== null && (typeof parsedData === 'object' || Array.isArray(parsedData))) {
           return parsedData;
       } else {
-          console.warn(`Invalid data format in ${filePath}. Returning default value.`);
+          console.warn(`[Storage] Invalid data format in ${filePath}. Returning default value.`);
+          await logError(`Invalid data format in ${filePath}`, `Read Data (${filename})`);
           return defaultValue;
       }
     } catch (parseError: any) {
-        console.error(`Error parsing JSON from ${filePath}:`, parseError.message);
+        console.error(`[Storage] Error parsing JSON from ${filePath}:`, parseError.message);
+        await logError(parseError, `Read Data JSON Parse (${filename})`);
         // Optionally log the problematic content (be careful with sensitive data)
         // console.error("Problematic content:", fileContent.substring(0, 500)); // Log first 500 chars
         return defaultValue;
@@ -58,10 +67,12 @@ export const readData = async <T>(filename: string, defaultValue: T): Promise<T>
   } catch (error: any) {
     // If the error is ENOENT (file not found), return the default value silently.
     if (error.code === 'ENOENT') {
+      console.log(`[Storage] File ${filePath} not found, returning default value.`);
       return defaultValue;
     }
     // Log other read errors
-    console.error(`Error reading data from ${filePath}:`, error);
+    console.error(`[Storage] Error reading data from ${filePath}:`, error);
+    await logError(error, `Read Data (${filename})`);
     // Depending on the error, you might want to throw or return default
     return defaultValue; // Return default on other read errors for resilience
   }
@@ -77,13 +88,43 @@ export const readData = async <T>(filename: string, defaultValue: T): Promise<T>
 export const writeData = async <T>(filename: string, data: T): Promise<void> => {
   await ensureConfigDir(); // Ensure directory exists before writing
   const filePath = path.join(CONFIG_DIR, `${filename}.json`);
+  console.log(`[Storage] Writing data to: ${filePath}`); // Log write attempt
   try {
     // Ensure data is not undefined before stringifying
     const dataToWrite = data === undefined ? null : data;
     const fileContent = JSON.stringify(dataToWrite, null, 2); // Pretty print JSON
     await fs.writeFile(filePath, fileContent, 'utf-8');
+    console.log(`[Storage] Data successfully written to: ${filePath}`);
   } catch (error) {
-    console.error(`Error writing data to ${filePath}:`, error);
+    console.error(`[Storage] Error writing data to ${filePath}:`, error);
+    await logError(error, `Write Data (${filename})`);
     throw new Error(`Could not write data to file: ${filename}.json`);
   }
+};
+
+/**
+ * Deletes a JSON file from the config directory.
+ *
+ * @param filename The name of the file (without .json extension).
+ * @returns A promise that resolves when the deletion is complete or rejects on error.
+ */
+export const deleteData = async (filename: string): Promise<void> => {
+    await ensureConfigDir(); // Ensure directory exists
+    const filePath = path.join(CONFIG_DIR, `${filename}.json`);
+    console.log(`[Storage] Attempting to delete data file: ${filePath}`); // Log delete path
+
+    try {
+        await fs.unlink(filePath);
+        console.log(`[Storage] Data file successfully deleted: ${filePath}`);
+    } catch (error: any) {
+        if (error.code === 'ENOENT') {
+            console.log(`[Storage] Data file not found, skipping deletion: ${filePath}`);
+            // Optionally log this event if needed, but it's not usually an error
+            // await logError(`Attempted to delete non-existent file: ${filePath}`, `Delete Data (${filename})`);
+        } else {
+            console.error(`[Storage] Error deleting file ${filePath}:`, error);
+            await logError(error, `Delete Data (${filename})`);
+            throw new Error(`Failed to delete data for ${filename}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
 };

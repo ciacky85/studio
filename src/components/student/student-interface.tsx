@@ -1,4 +1,3 @@
-
 'use client';
 
 import {useState, useEffect, useCallback} from 'react';
@@ -24,11 +23,7 @@ const USERS_DATA_FILE = 'users';
 const AVAILABILITY_DATA_FILE = 'availability';
 const SCHEDULE_CONFIGURATIONS_FILE = 'scheduleConfigurations'; // Use configurations file
 const LOGGED_IN_USER_KEY = 'loggedInUser'; // Session key (localStorage)
-
-// Removed duplicate helper function, will import from admin-interface
-// // Helper function to find the active schedule configuration for a given date
-// const findActiveConfiguration = (...) => { ... };
-
+const GUEST_PROFESSOR_EMAIL = 'ospite@creativeacademy.it'; // Guest Professor constant
 
 export function StudentInterface() {
   const [allAvailableSlots, setAllAvailableSlots] = useState<BookingViewSlot[]>([]); // All available from assigned profs based on active schedule
@@ -98,59 +93,101 @@ export function StudentInterface() {
           const loadedBookedByUser: BookingViewSlot[] = [];
           const processedBookedIds = new Set<string>();
 
-          // Iterate through all professors' availability
+          // Iterate through all professors' availability data (including GUEST)
           Object.entries(allProfessorAvailability).forEach(([profEmail, slots]) => {
-               // Only consider slots from assigned professors
+               // Check slots booked BY the current user first
+               (slots || []).forEach(slot => {
+                    if (slot?.id && slot.classroom && slot.bookedBy === currentUserEmail && slot.duration === 60 && !processedBookedIds.has(slot.id)) {
+                        const bookingViewSlot: BookingViewSlot = {
+                            id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
+                            professorEmail: slot.professorEmail,
+                            isBookedByCurrentUser: true,
+                            bookingTime: slot.bookingTime || null,
+                        };
+                        loadedBookedByUser.push(bookingViewSlot);
+                        processedBookedIds.add(slot.id);
+                    }
+                });
+
+               // Now check for AVAILABLE slots from ASSIGNED professors (or GUEST if assigned)
                if (currentlyAssigned.includes(profEmail)) {
-                    slots.forEach(slot => {
-                         if (slot?.id && slot.classroom && typeof slot.isAvailable === 'boolean' && slot.professorEmail === profEmail && slot.duration === 60) {
-                            const bookingViewSlot: BookingViewSlot = {
-                                id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
-                                professorEmail: slot.professorEmail,
-                                isBookedByCurrentUser: slot.bookedBy === currentUserEmail,
-                                bookingTime: slot.bookingTime || null,
-                            };
+                    (slots || []).forEach(slot => {
+                         if (slot?.id && slot.classroom && slot.professorEmail === profEmail && slot.duration === 60) {
 
-                             // Check if the slot is available, not booked, and within ANY RELEVANT schedule configuration for its date
-                            if (slot.isAvailable && !slot.bookedBy) {
-                                try {
-                                    const slotDateObj = parseISO(slot.date);
-                                    const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`);
-                                    const relevantConfigs = findRelevantConfigurations(slotDateObj, loadedConfigurations); // Use the imported helper
+                             try {
+                                 const slotDateObj = parseISO(slot.date);
+                                 const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`);
+                                 const relevantConfigs = findRelevantConfigurations(slotDateObj, loadedConfigurations); // Find configurations active on the slot's date
+                                 const dayOfWeek = format(slotDateObj, 'EEEE', { locale: it }); // Get day name for checking config
 
-                                     // Check if the slot definition exists in ANY of the relevant configurations
-                                     const isActiveInAnyConfig = relevantConfigs.some(config =>
-                                         Object.entries(config.schedule).some(([key, assignment]) => {
-                                             const [day, time, classroom] = key.split('-');
-                                             const dayOfWeek = format(slotDateObj, 'EEEE', { locale: it }); // Get day name in Italian
-                                             return day === dayOfWeek && time === slot.time && classroom === slot.classroom && assignment.professor === slot.professorEmail;
-                                         })
-                                     );
+                                 // Check if this specific slot (day-time-classroom-prof) is defined in ANY relevant config
+                                 const isActiveInAnyConfig = relevantConfigs.some(config =>
+                                      Object.entries(config.schedule).some(([key, assignment]) => {
+                                          const [confDay, confTime, confClassroom] = key.split('-');
+                                          return confDay === dayOfWeek && confTime === slot.time && confClassroom === slot.classroom && assignment.professor === slot.professorEmail;
+                                      })
+                                 );
 
-                                    if (!isBefore(slotDateTime, startOfDay(new Date())) && isActiveInAnyConfig) {
+                                 // Determine availability:
+                                 // For GUEST professor: Available if NOT booked and active in config. Ignore stored isAvailable.
+                                 // For REGULAR professor: Available if isAvailable=true, NOT booked, and active in config.
+                                 const isActuallyAvailable =
+                                      profEmail === GUEST_PROFESSOR_EMAIL
+                                          ? !slot.bookedBy && isActiveInAnyConfig
+                                          : slot.isAvailable && !slot.bookedBy && isActiveInAnyConfig;
+
+                                 // Add to list if available and not in the past
+                                 if (isActuallyAvailable && !isBefore(slotDateTime, startOfDay(new Date()))) {
+                                     const bookingViewSlot: BookingViewSlot = {
+                                         id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
+                                         professorEmail: slot.professorEmail,
+                                         isBookedByCurrentUser: false, // It's available, so not booked by current user
+                                         bookingTime: null,
+                                     };
+                                     // Avoid adding duplicates if multiple availability entries exist (though shouldn't happen with IDs)
+                                     if (!loadedAllAvailable.some(existing => existing.id === bookingViewSlot.id)) {
                                          loadedAllAvailable.push(bookingViewSlot);
-                                    }
-                                } catch (parseError) { console.warn(`Parse error slot ${slot.id}:`, parseError); }
-                            }
+                                     }
+                                 }
+                             } catch (parseError) { console.warn(`Parse error slot ${slot.id}:`, parseError); }
                          }
                     });
                }
-
-                // Check slots booked BY the current user (regardless of assignment or schedule config, as they booked it previously)
-                slots.forEach(slot => {
-                     if (slot?.id && slot.classroom && slot.bookedBy === currentUserEmail && slot.duration === 60 && !processedBookedIds.has(slot.id)) {
-                         const bookingViewSlot: BookingViewSlot = {
-                             id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
-                             professorEmail: slot.professorEmail,
-                             isBookedByCurrentUser: true,
-                             bookingTime: slot.bookingTime || null,
-                         };
-                         loadedBookedByUser.push(bookingViewSlot);
-                         processedBookedIds.add(slot.id);
-                     }
-                 });
-
           });
+
+           // Special handling if GUEST professor is assigned but has NO entries in availability.json yet
+           if (currentlyAssigned.includes(GUEST_PROFESSOR_EMAIL) && !allProfessorAvailability[GUEST_PROFESSOR_EMAIL]) {
+               console.log("[Student] Guest professor assigned, checking schedule configs for available guest slots...");
+               // Iterate through ALL dates in the future for simplicity (or limit to a reasonable range)
+               // For now, let's just check configs against the selected date
+               if (selectedDate) {
+                   const relevantConfigs = findRelevantConfigurations(selectedDate, loadedConfigurations);
+                   const dayOfWeek = format(selectedDate, 'EEEE', { locale: it });
+                   const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+
+                   relevantConfigs.forEach(config => {
+                       Object.entries(config.schedule).forEach(([key, assignment]) => {
+                           const [confDay, confTime, confClassroom] = key.split('-');
+                           if (confDay === dayOfWeek && assignment.professor === GUEST_PROFESSOR_EMAIL) {
+                               const slotId = `${formattedDate}-${confTime}-${confClassroom}-${GUEST_PROFESSOR_EMAIL}`;
+                               const slotDateTime = parseISO(`${formattedDate}T${confTime}:00`);
+                               // Check if it's already in the available list (could be added above if another prof had it)
+                               // AND ensure it's not in the past
+                               if (!loadedAllAvailable.some(s => s.id === slotId) && !isBefore(slotDateTime, startOfDay(new Date()))) {
+                                    const guestBookingViewSlot: BookingViewSlot = {
+                                        id: slotId, date: formattedDate, day: dayOfWeek, time: confTime, classroom: confClassroom, duration: 60,
+                                        professorEmail: GUEST_PROFESSOR_EMAIL,
+                                        isBookedByCurrentUser: false,
+                                        bookingTime: null,
+                                    };
+                                   loadedAllAvailable.push(guestBookingViewSlot);
+                               }
+                           }
+                       });
+                   });
+               }
+           }
+
 
           setAllAvailableSlots(sortSlotsByDateAndTime(loadedAllAvailable));
           setBookedSlots(sortSlotsByDateAndTime(loadedBookedByUser));
@@ -166,15 +203,15 @@ export function StudentInterface() {
       } finally {
           setIsLoading(false);
       }
-   }, [currentUserEmail, toast]); // Include toast
+   }, [currentUserEmail, toast, selectedDate]); // Include toast, selectedDate
 
 
-  // Load slots when currentUserEmail is set
+  // Load slots when currentUserEmail is set or selectedDate changes
   useEffect(() => {
      if (currentUserEmail) {
         loadSlots();
      }
-  }, [currentUserEmail, loadSlots]); // Dependency on loadSlots ensures it reruns if needed
+  }, [currentUserEmail, selectedDate, loadSlots]); // Dependency on loadSlots ensures it reruns if needed
 
 
   // Function to book a slot
@@ -205,28 +242,60 @@ export function StudentInterface() {
 
 
             const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
+            // Ensure the professor's array exists, especially for GUEST
+            if (!allAvailability[slotToBook.professorEmail]) {
+                 allAvailability[slotToBook.professorEmail] = [];
+            }
             const professorSlots = allAvailability[slotToBook.professorEmail];
-            if (!professorSlots) throw new Error("Slot professore target non trovati.");
 
-            const slotIndex = professorSlots.findIndex(s => s?.id === slotToBook.id && s.duration === 60);
-            if (slotIndex === -1) throw new Error("Slot da prenotare non trovato.");
+            const slotIndex = professorSlots.findIndex(s => s?.id === slotToBook.id); // Find by ID, even if it was just created
 
-            const originalSlot = professorSlots[slotIndex];
-            let slotDateTime; try { slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`); } catch { throw new Error("Formato data/ora slot non valido."); }
-            if (!originalSlot.isAvailable || originalSlot.bookedBy || isBefore(slotDateTime, new Date())) {
-                throw new Error("Lo slot non è più disponibile o è nel passato.");
+            let originalSlot: BookableSlot;
+
+            if (slotIndex !== -1) {
+                 // Slot exists in availability file
+                 originalSlot = professorSlots[slotIndex];
+                 let slotDateTime; try { slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`); } catch { throw new Error("Formato data/ora slot non valido."); }
+
+                 // Check availability again (race condition)
+                 const isStillAvailable = slotToBook.professorEmail === GUEST_PROFESSOR_EMAIL
+                     ? !originalSlot.bookedBy // Guest is available if not booked
+                     : originalSlot.isAvailable && !originalSlot.bookedBy; // Regular needs flag and no booking
+
+                 if (!isStillAvailable || isBefore(slotDateTime, new Date())) {
+                    throw new Error("Lo slot non è più disponibile o è nel passato.");
+                 }
+            } else if (slotToBook.professorEmail === GUEST_PROFESSOR_EMAIL) {
+                 // Slot is for GUEST and doesn't exist in availability.json yet, create it
+                 console.log(`[Student] Creating new availability entry for guest slot ${slotToBook.id}`);
+                 originalSlot = {
+                     ...slotToBook, // Copy data from the view slot
+                     isAvailable: false, // Will be immediately booked
+                     bookedBy: null, // Will be set below
+                     bookingTime: null, // Will be set below
+                 };
+                 // No need to push here yet, will update/add below
+            } else {
+                 // Slot for regular professor not found in availability - this shouldn't happen if loadSlots is correct
+                 throw new Error("Slot da prenotare non trovato nella disponibilità del professore.");
             }
 
-            // Update slot
+            // --- Update Slot ---
             originalSlot.bookedBy = currentUserEmail;
             originalSlot.bookingTime = new Date().toISOString();
-            originalSlot.isAvailable = false;
+            originalSlot.isAvailable = false; // Always false after booking
 
-            // Save update for the target professor
-            allAvailability[slotToBook.professorEmail] = professorSlots;
+            // --- Save Update ---
+            if (slotIndex !== -1) {
+                 professorSlots[slotIndex] = originalSlot; // Update existing
+            } else {
+                 professorSlots.push(originalSlot); // Add the newly created guest slot
+            }
+            // Sort the professor's slots after modification (optional but good practice)
+            allAvailability[slotToBook.professorEmail] = sortSlotsByDateAndTime(professorSlots);
             await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
 
-            // Prepare email details
+            // --- Send Emails ---
             const formattedDate = format(parseISO(slotToBook.date), 'dd/MM/yyyy', { locale: it });
             const formattedTime = slotToBook.time;
             const classroomInfo = slotToBook.classroom;
@@ -237,10 +306,12 @@ export function StudentInterface() {
             const { addLink: addLinkStudent } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleStudent, eventTitleStudent, classroomInfo, descriptionStudent);
             const { addLink: addLinkProfessor } = getCalendarLinksFromSlot(slotToBook.date, slotToBook.time, slotToBook.duration, eventTitleProfessor, eventTitleProfessor, classroomInfo, descriptionProfessor);
 
-            // Send confirmation emails
             try {
               await sendEmail({ to: currentUserEmail, subject: 'Conferma Prenotazione Lezione', html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToBook.professorEmail} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p><p>Aggiungi al tuo calendario Google: <a href="${addLinkStudent}">Aggiungi al Calendario</a></p>` });
-              await sendEmail({ to: slotToBook.professorEmail, subject: 'Nuova Prenotazione Ricevuta', html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dallo studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}.</p><p>Aggiungi al tuo calendario Google: <a href="${addLinkProfessor}">Aggiungi al Calendario</a></p>` });
+              // Don't send email to the GUEST account
+              if (slotToBook.professorEmail !== GUEST_PROFESSOR_EMAIL) {
+                await sendEmail({ to: slotToBook.professorEmail, subject: 'Nuova Prenotazione Ricevuta', html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dallo studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}.</p><p>Aggiungi al tuo calendario Google: <a href="${addLinkProfessor}">Aggiungi al Calendario</a></p>` });
+              }
             } catch (emailError) {
                 console.error("Errore invio email conferma (studente):", emailError);
                 await logError(emailError, 'Student Book Slot (Email)');
@@ -276,7 +347,7 @@ export function StudentInterface() {
                 const professorSlots = allAvailability[slotToCancel.professorEmail];
                 if (!professorSlots) throw new Error("Slot professore target non trovati.");
 
-                const slotIndex = professorSlots.findIndex(s => s?.id === slotToCancel.id && s.duration === 60);
+                const slotIndex = professorSlots.findIndex(s => s?.id === slotToCancel.id); // Find by ID
                 if (slotIndex === -1) throw new Error("Slot da cancellare non trovato.");
 
                 const originalSlot = professorSlots[slotIndex];
@@ -284,13 +355,23 @@ export function StudentInterface() {
                    throw new Error("Non puoi cancellare questa prenotazione.");
                 }
 
-                // Update slot - make available again
+                // Update slot - make available again (only for non-guest professors)
                 originalSlot.bookedBy = null;
                 originalSlot.bookingTime = null;
-                originalSlot.isAvailable = true;
+                // For Guest professor, we don't necessarily set isAvailable=true,
+                // its availability is derived from the schedule config.
+                // For regular professors, we set it back to true.
+                if (slotToCancel.professorEmail !== GUEST_PROFESSOR_EMAIL) {
+                    originalSlot.isAvailable = true;
+                } else {
+                    // For guest, ensure isAvailable stays false, as its meaning is different.
+                    // Availability is determined by config + not booked.
+                    originalSlot.isAvailable = false;
+                }
+
 
                 // Save update for the target professor
-                allAvailability[slotToCancel.professorEmail] = professorSlots;
+                allAvailability[slotToCancel.professorEmail][slotIndex] = originalSlot;
                 await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
 
                  // Prepare email details
@@ -305,7 +386,10 @@ export function StudentInterface() {
                  // Send cancellation emails
                  try {
                    await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Lezione', html: `<p>Ciao,</p><p>La tua lezione con il Prof. ${slotToCancel.professorEmail} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkStudent}">Rimuovi dal Calendario</a></p>` });
-                   await sendEmail({ to: slotToCancel.professorEmail, subject: 'Prenotazione Cancellata', html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione dello studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>` });
+                   // Don't send email to the GUEST account
+                   if (slotToCancel.professorEmail !== GUEST_PROFESSOR_EMAIL) {
+                     await sendEmail({ to: slotToCancel.professorEmail, subject: 'Prenotazione Cancellata', html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione dello studente ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>` });
+                   }
                  } catch (emailError) {
                     console.error("Errore invio email cancellazione (studente):", emailError);
                     await logError(emailError, 'Student Cancel Booking (Email)');
@@ -389,7 +473,7 @@ export function StudentInterface() {
                                     <TableRow key={`available-${slot.id}`}>
                                       <TableCell>{slot.time}</TableCell>
                                       <TableCell>{slot.classroom}</TableCell>
-                                      <TableCell>{slot.professorEmail}</TableCell>
+                                      <TableCell>{slot.professorEmail === GUEST_PROFESSOR_EMAIL ? 'Ospite' : slot.professorEmail}</TableCell>
                                       <TableCell className="text-center">{slot.duration} min</TableCell>
                                       <TableCell className="text-center">
                                         <Button onClick={() => bookSlot(slot)} size="sm" disabled={isLoading}>Prenota</Button>
@@ -436,7 +520,7 @@ export function StudentInterface() {
                          <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                          <TableCell>{slot.time}</TableCell>
                          <TableCell>{slot.classroom}</TableCell>
-                         <TableCell>{slot.professorEmail}</TableCell>
+                         <TableCell>{slot.professorEmail === GUEST_PROFESSOR_EMAIL ? 'Ospite' : slot.professorEmail}</TableCell>
                          <TableCell className="text-center">{slot.duration} min</TableCell>
                          <TableCell className="text-center">
                            {isPastLesson ? (

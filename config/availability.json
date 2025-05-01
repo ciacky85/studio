@@ -98,5 +98,31 @@
       "bookingTime": "2025-05-01T21:17:20.689Z",
       "professorEmail": "GUEST"
     }
+  ],
+  "ospite@creativeacademy.it": [
+    {
+      "id": "2025-05-06-13:00-Aula 1 Grande-ospite@creativeacademy.it",
+      "date": "2025-05-06",
+      "day": "Martedì",
+      "time": "13:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
+      "professorEmail": "ospite@creativeacademy.it"
+    },
+    {
+      "id": "2025-05-06-14:00-Aula 1 Grande-ospite@creativeacademy.it",
+      "date": "2025-05-06",
+      "day": "Martedì",
+      "time": "14:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
+      "professorEmail": "ospite@creativeacademy.it"
+    }
   ]
 }
