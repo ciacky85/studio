@@ -13,10 +13,9 @@ import {
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@/components/ui/table';
 import {sendEmail}from '@/services/email';
 import {useToast}from "@/hooks/use-toast";
-import type { UserData } from '@/types/user';
-import type { AllUsersData } from '@/types/app-data';
+import type { UserData, AllUsersData } from '@/types/user';
 import { Separator } from '@/components/ui/separator';
-import { format, parseISO, isWithinInterval, startOfDay } from 'date-fns';
+import { format, parseISO, isWithinInterval, startOfDay, isBefore } from 'date-fns';
 import { ManageUserProfessorsDialog } from './manage-user-professors-dialog';
 import { cn } from "@/lib/utils";
 import type {DisplayUser}from '@/types/display-user';
@@ -51,19 +50,23 @@ const professorColors = [
   'bg-emerald-100 dark:bg-emerald-900',
 ];
 
-// Helper function to find the active schedule configuration for a given date
-const findActiveConfiguration = (date: Date, configurations: ScheduleConfiguration[]): ScheduleConfiguration | null => {
-    const targetDate = startOfDay(date);
-    return configurations.find(config => {
+// Helper function to find relevant (non-expired) schedule configurations for a given date
+export const findRelevantConfigurations = (date: Date, configurations: ScheduleConfiguration[]): ScheduleConfiguration[] => {
+    if (!configurations || configurations.length === 0) {
+        return [];
+    }
+    const targetDateStart = startOfDay(date); // Compare against the start of the target date
+
+    return configurations.filter(config => {
         try {
-            const startDate = startOfDay(parseISO(config.startDate));
-            const endDate = startOfDay(parseISO(config.endDate));
-            return isWithinInterval(targetDate, { start: startDate, end: endDate });
+            const endDate = startOfDay(parseISO(config.endDate)); // Get start of end date for comparison
+            // Check if end date is today or in the future relative to the target date
+            return !isBefore(endDate, targetDateStart);
         } catch (e) {
-            console.error(`Error parsing dates for configuration ${config.id}:`, e);
-            return false;
+            console.error(`Error parsing end date for configuration ${config.id}:`, e);
+            return false; // Exclude configs with invalid dates
         }
-    }) || null;
+    });
 };
 
 // Helper function for deep equality check
@@ -178,7 +181,7 @@ export function AdminInterface() {
          }
       });
       setPendingRegistrations(loadedPending);
-      setApprovedUsers(loadedApproved);
+      setApprovedUsers(loadedApproved.sort((a, b) => a.email.localeCompare(b.email))); // Sort approved users
       setProfessors(loadedProfessors.sort());
       console.log(`[Admin] Processed ${loadedPending.length} pending, ${loadedApproved.length} approved users, ${loadedProfessors.length} professors.`);
 
@@ -265,7 +268,8 @@ export function AdminInterface() {
             // --- Update Local State Immediately ---
             setPendingRegistrations(prev => prev.filter(reg => reg.email !== email));
             // Ensure we pass the user object with updated approval status (implicitly true now)
-            setApprovedUsers(prev => [...prev, userToApprove].sort((a, b) => a.email.localeCompare(b.email))); // Keep sorted
+             setApprovedUsers(prev => [...prev, { ...userToApprove, assignedProfessorEmails: userData.assignedProfessorEmail }].sort((a, b) => a.email.localeCompare(b.email))); // Keep sorted and update emails if needed
+
             // If the approved user is a professor, update the professors list too
              if (userToApprove.role === 'professor' && !professors.includes(email)) {
                   setProfessors(prev => [...prev, email].sort());
@@ -478,24 +482,27 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
         schedule: { ...schedule }, // Save a copy of the current schedule grid
     };
 
-    // Check if an existing configuration has the same name, dates, AND schedule content
-    const existingConfig = savedConfigurations.find(
-        (c) =>
-            c.name === newConfigData.name &&
-            c.startDate === newConfigData.startDate &&
-            c.endDate === newConfigData.endDate &&
-            deepEqual(c.schedule, newConfigData.schedule) // Deep check schedule content
-    );
-
-    if (existingConfig) {
-        // If exact match found, inform user and do nothing
-        toast({ title: "Configurazione Esistente", description: "Una configurazione identica esiste già. Nessuna modifica apportata." });
-        return;
-    }
-
     // Check if an existing configuration has the same name (but different dates/content)
     const configWithSameName = savedConfigurations.find(c => c.name === newConfigData.name);
-    const newConfigComplete: ScheduleConfiguration = { ...newConfigData, id: configWithSameName ? configWithSameName.id : Date.now().toString() };
+
+    // Check if an existing config has the same dates AND content (regardless of name)
+     const existingConfigWithSameContent = savedConfigurations.find(c =>
+         c.startDate === newConfigData.startDate &&
+         c.endDate === newConfigData.endDate &&
+         deepEqual(c.schedule, newConfigData.schedule)
+     );
+
+
+    if (existingConfigWithSameContent && configWithSameName?.id === existingConfigWithSameContent.id) {
+         toast({ title: "Configurazione Esistente", description: "Una configurazione identica (nome, date, contenuto) esiste già. Nessuna modifica apportata." });
+         return;
+    }
+
+    const newConfigComplete: ScheduleConfiguration = {
+        ...newConfigData,
+        // Use existing ID if name matches, otherwise generate new ID
+        id: configWithSameName ? configWithSameName.id : Date.now().toString()
+    };
 
     if (configWithSameName) {
         // Prompt for overwrite
@@ -504,7 +511,7 @@ const openManageProfessorsDialog = (user: DisplayUser) => {
         setShowOverwriteConfirm(true);
     } else {
         // No existing config with the same name, save directly
-        await saveConfiguration(newConfigComplete);
+        await saveConfiguration(newConfigComplete, false);
     }
 };
 
@@ -516,17 +523,22 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
         let updatedConfigs;
 
         if (overwrite) {
+            console.log(`[Admin] Overwriting configuration ID: ${configToSave.id}`);
             updatedConfigs = currentConfigs.map(c => c.id === configToSave.id ? configToSave : c);
         } else {
+            console.log(`[Admin] Adding new configuration ID: ${configToSave.id}`);
             // Check for ID collision just in case (highly unlikely with timestamp)
              if (currentConfigs.some(c => c.id === configToSave.id)) {
-                  configToSave.id = Date.now().toString() + Math.random().toString(16).slice(2); // Ensure unique ID
+                  const newId = Date.now().toString() + Math.random().toString(16).slice(2); // Ensure unique ID
+                  console.warn(`[Admin] ID collision detected, generating new ID: ${newId}`);
+                  configToSave.id = newId;
              }
             updatedConfigs = [...currentConfigs, configToSave];
         }
 
 
         await writeData<ScheduleConfiguration[]>(SCHEDULE_CONFIGURATIONS_FILE, updatedConfigs);
+        console.log(`[Admin] Configuration file updated. Total configurations: ${updatedConfigs.length}`);
 
         setSavedConfigurations(updatedConfigs.sort((a, b) => a.name.localeCompare(b.name))); // Update local state
         setConfigName(''); // Clear input fields
@@ -552,7 +564,14 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
        if (configToLoad) {
            setSchedule(configToLoad.schedule); // Load the saved grid into the editable schedule
            setConfigName(configToLoad.name); // Load name and dates back to fields for reference/editing
-           setDateRange({ from: parseISO(configToLoad.startDate), to: parseISO(configToLoad.endDate) });
+           try {
+                setDateRange({ from: parseISO(configToLoad.startDate), to: parseISO(configToLoad.endDate) });
+           } catch (e) {
+               console.error("Error parsing dates from loaded config:", e);
+               setDateRange(undefined); // Reset date range if parsing fails
+               toast({ variant: "destructive", title: "Errore Date", description: "Date della configurazione non valide." });
+               return; // Stop loading if dates are invalid
+           }
            toast({ title: "Configurazione Caricata", description: `Configurazione "${configToLoad.name}" caricata nella griglia per la modifica.` });
        } else {
            toast({ variant: "destructive", title: "Errore", description: "Configurazione non trovata." });
@@ -969,4 +988,3 @@ const saveConfiguration = async (configToSave: ScheduleConfiguration, overwrite 
     </>
   );
 }
-

@@ -9,14 +9,15 @@ import {Calendar} from '@/components/ui/calendar';
 import {useToast} from "@/hooks/use-toast";
 import { format, isBefore, startOfDay, parseISO, differenceInHours, isWithinInterval } from 'date-fns'; // Added isWithinInterval
 import { it } from 'date-fns/locale';
-import type { UserData } from '@/types/user';
+import type { UserData, AllUsersData } from '@/types/user';
 import { sendEmail } from '@/services/email';
 import { getCalendarLinksFromSlot } from '@/lib/calendar-utils';
 import type { BookableSlot, BookingViewSlot } from '@/types/schedule'; // Import schedule types
-import type { AllUsersData, AllProfessorAvailability } from '@/types/app-data'; // Import app data types
+import type { AllProfessorAvailability } from '@/types/app-data'; // Import app data types
 import type { ScheduleConfiguration, AllScheduleConfigurations } from '@/types/schedule-configuration'; // Import configuration types
 import { readData, writeData } from '@/services/data-storage'; // Import data storage service
 import { logError } from '@/services/logging'; // Import the error logging service
+import { findRelevantConfigurations } from '@/components/admin/admin-interface'; // Import the helper function
 
 // Constants for filenames
 const USERS_DATA_FILE = 'users';
@@ -24,23 +25,9 @@ const AVAILABILITY_DATA_FILE = 'availability';
 const SCHEDULE_CONFIGURATIONS_FILE = 'scheduleConfigurations'; // Use configurations file
 const LOGGED_IN_USER_KEY = 'loggedInUser'; // Session key (localStorage)
 
-// Helper function to find the active schedule configuration for a given date
-const findActiveConfiguration = (date: Date, configurations: ScheduleConfiguration[]): ScheduleConfiguration | null => {
-    if (!configurations || configurations.length === 0) {
-        return null;
-    }
-    const targetDate = startOfDay(date);
-    return configurations.find(config => {
-        try {
-            const startDate = startOfDay(parseISO(config.startDate));
-            const endDate = startOfDay(parseISO(config.endDate));
-            return isWithinInterval(targetDate, { start: startDate, end: endDate });
-        } catch (e) {
-            console.error(`Error parsing dates for configuration ${config.id}:`, e);
-            return false;
-        }
-    }) || null;
-};
+// Removed duplicate helper function, will import from admin-interface
+// // Helper function to find the active schedule configuration for a given date
+// const findActiveConfiguration = (...) => { ... };
 
 
 export function StudentInterface() {
@@ -88,7 +75,7 @@ export function StudentInterface() {
    };
 
 
-   // Function to load slots based on assigned professors, booked slots, and active schedule configuration
+   // Function to load slots based on assigned professors, booked slots, and relevant schedule configurations
    const loadSlots = useCallback(async () => {
       if (!currentUserEmail) return;
 
@@ -124,22 +111,23 @@ export function StudentInterface() {
                                 bookingTime: slot.bookingTime || null,
                             };
 
-                             // Check if the slot is available, not booked, and within an active schedule configuration for its date
+                             // Check if the slot is available, not booked, and within ANY RELEVANT schedule configuration for its date
                             if (slot.isAvailable && !slot.bookedBy) {
                                 try {
                                     const slotDateObj = parseISO(slot.date);
                                     const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`);
-                                    const activeConfig = findActiveConfiguration(slotDateObj, loadedConfigurations);
+                                    const relevantConfigs = findRelevantConfigurations(slotDateObj, loadedConfigurations); // Use the imported helper
 
-                                    // Check if the slot is defined in the active config for that day/time/classroom/professor
-                                     const isActiveInConfig = activeConfig && Object.entries(activeConfig.schedule).some(([key, assignment]) => {
-                                        const [day, time, classroom] = key.split('-');
-                                        const dayOfWeek = format(slotDateObj, 'EEEE', { locale: it }); // Get day name in Italian
-                                        return day === dayOfWeek && time === slot.time && classroom === slot.classroom && assignment.professor === slot.professorEmail;
-                                    });
+                                     // Check if the slot definition exists in ANY of the relevant configurations
+                                     const isActiveInAnyConfig = relevantConfigs.some(config =>
+                                         Object.entries(config.schedule).some(([key, assignment]) => {
+                                             const [day, time, classroom] = key.split('-');
+                                             const dayOfWeek = format(slotDateObj, 'EEEE', { locale: it }); // Get day name in Italian
+                                             return day === dayOfWeek && time === slot.time && classroom === slot.classroom && assignment.professor === slot.professorEmail;
+                                         })
+                                     );
 
-
-                                    if (!isBefore(slotDateTime, startOfDay(new Date())) && isActiveInConfig) {
+                                    if (!isBefore(slotDateTime, startOfDay(new Date())) && isActiveInAnyConfig) {
                                          loadedAllAvailable.push(bookingViewSlot);
                                     }
                                 } catch (parseError) { console.warn(`Parse error slot ${slot.id}:`, parseError); }
@@ -201,15 +189,17 @@ export function StudentInterface() {
                  throw new Error("Puoi prenotare solo slot di professori a te assegnati.");
             }
 
-            // Check if the slot is still valid according to active schedule config
+            // Check if the slot is still valid according to relevant schedule configurations
             const slotDateObj = parseISO(slotToBook.date);
-            const activeConfig = findActiveConfiguration(slotDateObj, scheduleConfigurations);
-             const isActiveInConfig = activeConfig && Object.entries(activeConfig.schedule).some(([key, assignment]) => {
-                const [day, time, classroom] = key.split('-');
-                const dayOfWeek = format(slotDateObj, 'EEEE', { locale: it });
-                return day === dayOfWeek && time === slotToBook.time && classroom === slotToBook.classroom && assignment.professor === slotToBook.professorEmail;
-            });
-             if (!isActiveInConfig) {
+            const relevantConfigs = findRelevantConfigurations(slotDateObj, scheduleConfigurations); // Use imported helper
+            const isActiveInAnyConfig = relevantConfigs.some(config =>
+                 Object.entries(config.schedule).some(([key, assignment]) => {
+                    const [day, time, classroom] = key.split('-');
+                    const dayOfWeek = format(slotDateObj, 'EEEE', { locale: it });
+                    return day === dayOfWeek && time === slotToBook.time && classroom === slotToBook.classroom && assignment.professor === slotToBook.professorEmail;
+                })
+            );
+             if (!isActiveInAnyConfig) {
                 throw new Error("Questo slot non è più valido secondo l'orario attuale.");
              }
 
@@ -475,5 +465,3 @@ export function StudentInterface() {
     </div>
   );
 }
-
-    
