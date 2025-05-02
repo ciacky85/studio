@@ -120,27 +120,30 @@ const days = [
   'Domenica',
 ]; // Italian days
 
+// Define a color palette for professors
+const professorColors = [
+  'bg-blue-100 dark:bg-blue-900',
+  'bg-green-100 dark:bg-green-900',
+  'bg-purple-100 dark:bg-purple-900',
+  'bg-pink-100 dark:bg-pink-900',
+  'bg-indigo-100 dark:bg-indigo-900',
+  'bg-teal-100 dark:bg-teal-900',
+  'bg-orange-100 dark:bg-orange-900',
+  'bg-lime-100 dark:bg-lime-900',
+  'bg-cyan-100 dark:bg-cyan-900',
+  'bg-emerald-100 dark:bg-emerald-900',
+];
+const guestColor = 'bg-green-400 dark:bg-green-700'; // Bright green for GUEST
+
 // Function to get a color class based on professor email
 const getProfessorColor = (
   professorEmail: string | undefined | null,
   allProfessors: string[]
 ): string => {
   const index = allProfessors.indexOf(professorEmail || ''); // Handle null/undefined
-  if (index === -1 || !professorEmail || professorEmail === GUEST_IDENTIFIER) { // Exclude GUEST from coloring
+  if (index === -1 || !professorEmail || professorEmail === GUEST_IDENTIFIER) { // Exclude GUEST from regular coloring
     return ''; // No color if professor not found, unassigned, null/undefined, or GUEST
   }
-  const professorColors = [
-    'bg-blue-100 dark:bg-blue-900',
-    'bg-green-100 dark:bg-green-900', // Changed yellow to green for better visibility
-    'bg-purple-100 dark:bg-purple-900',
-    'bg-pink-100 dark:bg-pink-900',
-    'bg-indigo-100 dark:bg-indigo-900',
-    'bg-teal-100 dark:bg-teal-900',
-    'bg-orange-100 dark:bg-orange-900',
-    'bg-lime-100 dark:bg-lime-900',
-    'bg-cyan-100 dark:bg-cyan-900',
-    'bg-emerald-100 dark:bg-emerald-900',
-  ];
   return professorColors[index % professorColors.length];
 };
 
@@ -682,7 +685,7 @@ export function AdminInterface() {
     try {
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
       const dayIndex = getDay(guestBookingDate);
-      const dayOfWeekString = days[dayIndex === 0 ? 6 : dayIndex - 1]; // date-fns: Sun=0, Mon=1... Our array: Mon=0, Tue=1... Sun=6
+       const dayOfWeekString = days[dayIndex === 0 ? 6 : dayIndex - 1]; // date-fns: Sun=0 -> index 6, Mon=1 -> index 0 etc.
 
       console.log(`[Admin Guest] Loading guest slots for: ${formattedDate} (Day index: ${dayIndex}, Mapped day: ${dayOfWeekString})`);
 
@@ -959,10 +962,14 @@ export function AdminInterface() {
                                     assignedProfessor,
                                     professors
                                   );
+                                   const isGuestAssignment = assignedProfessor === GUEST_IDENTIFIER;
                                   return (
                                     <TableCell
                                       key={scheduleKey}
-                                      className={cn('border-l', professorColorClass)}
+                                      className={cn(
+                                          'border-l',
+                                          isGuestAssignment ? guestColor : professorColorClass // Apply guest color or professor color
+                                       )}
                                     >
                                       <Select
                                         value={assignedProfessor || 'unassigned'}
@@ -1484,4 +1491,4 @@ const buttonVariants = ({ variant }: { variant?: string | null }) => {
    return "bg-primary text-primary-foreground hover:bg-primary/90"; // Default
  };
 
-    
+
