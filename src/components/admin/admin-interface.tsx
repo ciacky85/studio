@@ -29,7 +29,8 @@ import {
 } from '@/components/ui/table';
 import {sendEmail} from '@/services/email';
 import {useToast} from "@/hooks/use-toast";
-import type {UserData, AllUsersData} from '@/types/user';
+import type {UserData} from '@/types/user';
+import type {AllUsersData} from '@/types/app-data';
 import {Separator} from '@/components/ui/separator';
 import { format, parseISO, getDay, isWithinInterval, parse, isBefore, startOfDay, isValid } from 'date-fns'; // Added isValid
 import {ManageUserProfessorsDialog} from './manage-user-professors-dialog';
@@ -133,7 +134,8 @@ const professorColors = [
   'bg-cyan-100 dark:bg-cyan-900',
   'bg-emerald-100 dark:bg-emerald-900',
 ];
-const guestColor = 'bg-green-400 dark:bg-green-700'; // Bright green for GUEST
+// Define a specific bright green color for guest slots
+const guestColor = 'bg-green-400 dark:bg-green-700';
 
 // Function to get a color class based on professor email
 const getProfessorColor = (
@@ -141,8 +143,9 @@ const getProfessorColor = (
   allProfessors: string[]
 ): string => {
   const index = allProfessors.indexOf(professorEmail || ''); // Handle null/undefined
-  if (index === -1 || !professorEmail || professorEmail === GUEST_IDENTIFIER) { // Exclude GUEST from regular coloring
-    return ''; // No color if professor not found, unassigned, null/undefined, or GUEST
+  // Return empty string if not found, unassigned, null, or the GUEST identifier
+  if (index === -1 || !professorEmail || professorEmail === GUEST_IDENTIFIER) {
+    return '';
   }
   return professorColors[index % professorColors.length];
 };
@@ -968,7 +971,8 @@ export function AdminInterface() {
                                       key={scheduleKey}
                                       className={cn(
                                           'border-l',
-                                          isGuestAssignment ? guestColor : professorColorClass // Apply guest color or professor color
+                                          // Apply bright green if it's a guest assignment, otherwise the professor's color
+                                          isGuestAssignment ? guestColor : professorColorClass
                                        )}
                                     >
                                       <Select
@@ -1490,5 +1494,3 @@ const buttonVariants = ({ variant }: { variant?: string | null }) => {
    }
    return "bg-primary text-primary-foreground hover:bg-primary/90"; // Default
  };
-
-
