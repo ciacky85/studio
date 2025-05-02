@@ -681,15 +681,16 @@ export function AdminInterface() {
 
     try {
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
-      const dayOfWeekIndex = getDay(guestBookingDate);
-       // Adjust day index: date-fns uses 0 for Sunday, we use 0 for Monday internally in 'days' array
-       const adjustedDayIndex = (dayOfWeekIndex === 0 ? 6 : dayOfWeekIndex - 1); // Convert Sunday (0) to 6, others shift down by 1
-       const dayOfWeekString = days[adjustedDayIndex]; // Use index for Italian days array
+      const dayIndex = getDay(guestBookingDate);
+      const dayOfWeekString = days[dayIndex === 0 ? 6 : dayIndex - 1]; // date-fns: Sun=0, Mon=1... Our array: Mon=0, Tue=1... Sun=6
+
+      console.log(`[Admin Guest] Loading guest slots for: ${formattedDate} (Day index: ${dayIndex}, Mapped day: ${dayOfWeekString})`);
 
       const relevantConfigs = findRelevantConfigurations(
         guestBookingDate,
         savedConfigurations
       );
+
       if (relevantConfigs.length === 0) {
          console.log(`[Admin Guest] Nessuna configurazione valida trovata per ${formattedDate}`);
         setAvailableGuestSlots([]);
@@ -710,13 +711,15 @@ export function AdminInterface() {
       const potentialGuestAssignments = new Set<string>(); // 'HH:MM-Classroom'
 
       relevantConfigs.forEach((config) => {
+        console.log(`[Admin Guest] Checking config: ${config.name}`);
         Object.entries(config.schedule).forEach(([key, assignment]) => {
           const parts = key.split('-');
           if (parts.length >= 3) {
             const day = parts[0];
             const time = parts[1];
             const classroom = parts.slice(2).join('-');
-            // Check if assignment is for GUEST_IDENTIFIER on the selected day
+
+            // Strict check: day matches AND professor is GUEST_IDENTIFIER
             if (
               day === dayOfWeekString &&
               assignment.professor === GUEST_IDENTIFIER &&
@@ -738,13 +741,15 @@ export function AdminInterface() {
         // Construct potential ID using GUEST_IDENTIFIER
         const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_IDENTIFIER}`;
 
-        // Check if this slot is already booked in the main availability file under GUEST_IDENTIFIER
+        // Check if this specific slot ID is already booked in the main availability file under GUEST_IDENTIFIER
         const isBooked = guestAvailability.some(
             (slot) => slot?.id === slotId && slot.bookedBy
         );
 
         if (!isBooked) {
           finalAvailableSlots.push(timeClassroomKey); // Add "HH:MM-Classroom"
+        } else {
+            console.log(`[Admin Guest] Slot ${slotId} is already booked.`);
         }
       });
 
@@ -769,7 +774,7 @@ export function AdminInterface() {
       });
       setAvailableGuestSlots([]);
     }
-  }, [guestBookingDate, savedConfigurations, toast]);
+  }, [guestBookingDate, savedConfigurations, toast]); // Added dependencies
 
 
   // Load guest slots when the date changes
@@ -1478,3 +1483,5 @@ const buttonVariants = ({ variant }: { variant?: string | null }) => {
    }
    return "bg-primary text-primary-foreground hover:bg-primary/90"; // Default
  };
+
+    
