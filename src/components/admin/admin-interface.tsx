@@ -1,3 +1,4 @@
+
 'use client';
 
 import {useState, useEffect, useCallback} from 'react';
@@ -135,7 +136,7 @@ const professorColors = [
   'bg-emerald-100 dark:bg-emerald-900',
 ];
 // Define a specific bright green color for guest slots
-const guestColor = 'bg-green-400 dark:bg-green-700';
+const guestColor = 'bg-green-400 dark:bg-green-700'; // Example: Bright green
 
 // Function to get a color class based on professor email
 const getProfessorColor = (
@@ -688,7 +689,9 @@ export function AdminInterface() {
     try {
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
       const dayIndex = getDay(guestBookingDate);
-       const dayOfWeekString = days[dayIndex === 0 ? 6 : dayIndex - 1]; // date-fns: Sun=0 -> index 6, Mon=1 -> index 0 etc.
+      // Correct mapping: Sunday (0) -> index 6, Monday (1) -> index 0, etc.
+      const adjustedDayIndex = dayIndex === 0 ? 6 : dayIndex - 1;
+      const dayOfWeekString = days[adjustedDayIndex];
 
       console.log(`[Admin Guest] Loading guest slots for: ${formattedDate} (Day index: ${dayIndex}, Mapped day: ${dayOfWeekString})`);
 
@@ -803,7 +806,8 @@ export function AdminInterface() {
       const [time, classroom] = selectedGuestSlot.split('-');
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
       const dayOfWeekIndex = getDay(guestBookingDate);
-       const adjustedDayIndex = (dayOfWeekIndex === 0 ? 6 : dayOfWeekIndex - 1); // Convert Sunday (0) to 6, others shift down by 1
+       // Correct mapping: Sunday (0) -> index 6, Monday (1) -> index 0, etc.
+       const adjustedDayIndex = dayOfWeekIndex === 0 ? 6 : dayOfWeekIndex - 1;
        const dayOfWeekString = days[adjustedDayIndex];
       // Use GUEST_IDENTIFIER for the slot ID
       const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_IDENTIFIER}`;
@@ -1494,3 +1498,5 @@ const buttonVariants = ({ variant }: { variant?: string | null }) => {
    }
    return "bg-primary text-primary-foreground hover:bg-primary/90"; // Default
  };
+
+    
