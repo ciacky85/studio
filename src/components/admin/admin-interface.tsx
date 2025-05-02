@@ -69,7 +69,7 @@ import {logError} from '@/services/logging'; // Import logging service
 const USERS_DATA_FILE = 'users';
 const AVAILABILITY_DATA_FILE = 'availability'; // Renamed for clarity
 const SCHEDULE_CONFIGURATIONS_FILE = 'scheduleConfigurations'; // New file for configurations
-const GUEST_PROFESSOR_EMAIL = 'ospite@creativeacademy.it'; // Constant for guest email
+const GUEST_IDENTIFIER = 'GUEST'; // Constant for guest identifier
 
 // Define available classrooms
 const classrooms = ['Aula 1 Grande', 'Aula 2 Piccola'];
@@ -125,8 +125,8 @@ const getProfessorColor = (
   allProfessors: string[]
 ): string => {
   const index = allProfessors.indexOf(professorEmail || ''); // Handle null/undefined
-  if (index === -1 || !professorEmail) {
-    return ''; // No color if professor not found, unassigned, or null/undefined
+  if (index === -1 || !professorEmail || professorEmail === GUEST_IDENTIFIER) { // Exclude GUEST from coloring
+    return ''; // No color if professor not found, unassigned, null/undefined, or GUEST
   }
   const professorColors = [
     'bg-blue-100 dark:bg-blue-900',
@@ -223,6 +223,9 @@ export function AdminInterface() {
       let idCounter = 1;
 
       Object.entries(allUsers).forEach(([email, userData]) => {
+        // Skip the removed ospite@creativeacademy.it user if it somehow still exists
+        // if (email === 'ospite@creativeacademy.it') return;
+
         if (userData && userData.role && typeof userData.approved === 'boolean') {
           const name = email.split('@')[0];
           const userDisplayData: DisplayUser = {
@@ -257,22 +260,26 @@ export function AdminInterface() {
         {}
       );
       const loadedAllBooked: BookableSlot[] = [];
-      Object.values(allProfessorAvailability)
-        .flat()
-        .forEach((slot) => {
-          if (
-            slot &&
-            slot.id &&
-            slot.date &&
-            slot.time &&
-            slot.classroom &&
-            slot.bookedBy &&
-            slot.professorEmail &&
-            slot.duration === 60
-          ) {
-            loadedAllBooked.push(slot);
-          }
-        });
+      Object.entries(allProfessorAvailability).forEach(([professorIdentifier, slots]) => {
+          // Skip slots from the removed ospite@creativeacademy.it
+          // if (professorIdentifier === 'ospite@creativeacademy.it') return;
+
+          (slots || []).flat().forEach((slot) => {
+              if (
+                slot &&
+                slot.id &&
+                slot.date &&
+                slot.time &&
+                slot.classroom &&
+                slot.bookedBy &&
+                slot.professorEmail && // professorEmail field still exists on the slot itself
+                slot.duration === 60
+              ) {
+                loadedAllBooked.push(slot);
+              }
+          });
+      });
+
       setAllBookedSlots(sortSlots(loadedAllBooked));
 
       // Load Saved Schedule Configurations
@@ -441,11 +448,11 @@ export function AdminInterface() {
     day: string,
     time: string,
     classroom: string,
-    professorEmail: string
+    professorIdentifier: string // Can be email or GUEST_IDENTIFIER
   ) => {
     const key = `${day}-${time}-${classroom}`;
     const newAssignment: ScheduleAssignment = {
-      professor: professorEmail === 'unassigned' ? '' : professorEmail,
+      professor: professorIdentifier === 'unassigned' ? '' : professorIdentifier,
     };
     setSchedule((prevSchedule) => ({...prevSchedule, [key]: newAssignment}));
   };
@@ -508,17 +515,6 @@ export function AdminInterface() {
              setIsSavingConfig(false);
              return;
           }
-        // const identicalConfig = savedConfigurations.find(
-        //   (cfg) =>
-        //     JSON.stringify(cfg.schedule) === JSON.stringify(newConfig.schedule)
-        // );
-
-        // if (identicalConfig) {
-        //   setConfigToReplace(identicalConfig);
-        //   setShowReplaceConfirmDialog(true);
-        //   setIsSavingConfig(false); // Stop loading until user confirms
-        //   return; // Wait for user confirmation
-        // }
       }
 
       let updatedConfigs: ScheduleConfiguration[];
@@ -674,49 +670,41 @@ export function AdminInterface() {
       return;
     }
 
-    // Don't set isLoading here to avoid flicker when just changing date
-    // setIsLoading(true); // Maybe add a specific guest loading state if needed
     try {
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
       const dayOfWeekIndex = getDay(guestBookingDate);
       const dayOfWeekString = days[dayOfWeekIndex]; // Use index for Italian days array
 
-      // Find relevant configurations for the selected guest booking date
       const relevantConfigs = findRelevantConfigurations(
         guestBookingDate,
         savedConfigurations
       );
       if (relevantConfigs.length === 0) {
-         console.log(`[Admin] No relevant configurations for guest date: ${formattedDate}`);
         setAvailableGuestSlots([]);
         return;
       }
-       console.log(`[Admin] Found ${relevantConfigs.length} relevant configs for guest date: ${formattedDate}`);
 
-
-      // Load all professor availability to check for existing bookings
+      // Load all availability to check for existing bookings
       const allAvailability = await readData<AllProfessorAvailability>(
         AVAILABILITY_DATA_FILE,
         {}
       );
-      const guestAvailability = allAvailability[GUEST_PROFESSOR_EMAIL] || [];
-       console.log(`[Admin] Guest availability entries: ${guestAvailability.length}`);
-
+      // Get availability using the GUEST_IDENTIFIER
+      const guestAvailability = allAvailability[GUEST_IDENTIFIER] || [];
 
       const potentialGuestAssignments = new Set<string>(); // 'HH:MM-Classroom'
 
-      // Aggregate potential guest slots from all relevant configurations
       relevantConfigs.forEach((config) => {
         Object.entries(config.schedule).forEach(([key, assignment]) => {
-          const parts = key.split('-'); // key format: "Day-HH:MM-Classroom"
+          const parts = key.split('-');
           if (parts.length >= 3) {
             const day = parts[0];
             const time = parts[1];
             const classroom = parts.slice(2).join('-');
-            // Check if the assignment is for the GUEST professor on the selected day
+            // Check if assignment is for GUEST_IDENTIFIER on the selected day
             if (
               day === dayOfWeekString &&
-              assignment.professor === GUEST_PROFESSOR_EMAIL &&
+              assignment.professor === GUEST_IDENTIFIER &&
               time &&
               classroom
             ) {
@@ -725,18 +713,16 @@ export function AdminInterface() {
           }
         });
       });
-       console.log(`[Admin] Potential guest assignments found for ${dayOfWeekString}:`, Array.from(potentialGuestAssignments));
-
 
       const finalAvailableSlots: string[] = [];
-      // Check each potential slot against existing bookings
       potentialGuestAssignments.forEach((timeClassroomKey) => {
         const [time, classroom] = timeClassroomKey.split('-');
-        const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_PROFESSOR_EMAIL}`; // Construct potential ID
+        // Construct potential ID using GUEST_IDENTIFIER
+        const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_IDENTIFIER}`;
 
-        // Check if this slot is already booked in the main availability file
+        // Check if this slot is already booked in the main availability file under GUEST_IDENTIFIER
         const isBooked = guestAvailability.some(
-            (slot) => slot?.id === slotId && slot.bookedBy // Check if ID matches and bookedBy is not null/empty
+            (slot) => slot?.id === slotId && slot.bookedBy
         );
 
         if (!isBooked) {
@@ -744,7 +730,6 @@ export function AdminInterface() {
         }
       });
 
-      // Sort the available slots by time, then classroom
       finalAvailableSlots.sort((a, b) => {
         const [timeA, classroomA] = a.split('-');
         const [timeB, classroomB] = b.split('-');
@@ -752,7 +737,6 @@ export function AdminInterface() {
         if (timeCompare !== 0) return timeCompare;
         return classroomA.localeCompare(classroomB);
       });
-        console.log(`[Admin] Final available guest slots for ${formattedDate}:`, finalAvailableSlots);
 
       setAvailableGuestSlots(finalAvailableSlots);
     } catch (error: any) {
@@ -765,16 +749,14 @@ export function AdminInterface() {
         duration: 7000,
       });
       setAvailableGuestSlots([]);
-    } finally {
-      // setIsLoading(false);
     }
-  }, [guestBookingDate, savedConfigurations, toast]); // Include dependencies
+  }, [guestBookingDate, savedConfigurations, toast]);
 
 
   // Load guest slots when the date changes
   useEffect(() => {
     loadAvailableGuestSlots();
-  }, [loadAvailableGuestSlots]); // Dependency array includes the callback
+  }, [loadAvailableGuestSlots]);
 
   const handleGuestBooking = async () => {
     if (!selectedGuestSlot || !guestName.trim() || !guestBookingDate || !isValid(guestBookingDate)) {
@@ -791,71 +773,61 @@ export function AdminInterface() {
       const [time, classroom] = selectedGuestSlot.split('-');
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
       const dayOfWeekIndex = getDay(guestBookingDate);
-      const dayOfWeekString = days[dayOfWeekIndex]; // Use index for Italian days array
-      const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_PROFESSOR_EMAIL}`;
+      const dayOfWeekString = days[dayOfWeekIndex];
+      // Use GUEST_IDENTIFIER for the slot ID
+      const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_IDENTIFIER}`;
 
-      // 1. Read current availability data
       const allAvailability = await readData<AllProfessorAvailability>(
         AVAILABILITY_DATA_FILE,
         {}
       );
 
-      // 2. Ensure guest professor array exists
-      if (!allAvailability[GUEST_PROFESSOR_EMAIL]) {
-        allAvailability[GUEST_PROFESSOR_EMAIL] = [];
+      // Ensure GUEST_IDENTIFIER array exists
+      if (!allAvailability[GUEST_IDENTIFIER]) {
+        allAvailability[GUEST_IDENTIFIER] = [];
       }
 
-      // 3. Check if the slot is ALREADY booked (race condition check)
-      const existingBooking = allAvailability[GUEST_PROFESSOR_EMAIL].find(
+      const existingBooking = allAvailability[GUEST_IDENTIFIER].find(
         (slot) => slot?.id === slotId && slot.bookedBy
       );
       if (existingBooking) {
         throw new Error('Questo slot è stato appena prenotato da qualcun altro.');
       }
 
-      // 4. Create the new booking slot data
       const newBooking: BookableSlot = {
         id: slotId,
         date: formattedDate,
         day: dayOfWeekString,
         time: time,
         classroom: classroom,
-        duration: 60, // Assuming guest slots are always 60 mins
+        duration: 60,
         isAvailable: false, // Mark as unavailable since it's booked
-        bookedBy: `Ospite: ${guestName.trim()}`, // Prefix guest name
+        bookedBy: `Ospite: ${guestName.trim()}`,
         bookingTime: new Date().toISOString(),
-        professorEmail: GUEST_PROFESSOR_EMAIL,
+        professorEmail: GUEST_IDENTIFIER, // Use GUEST_IDENTIFIER
       };
 
-      // 5. Add the new booking to the guest professor's slots
-      // Check if a slot with this ID already exists (e.g., from a previous cancellation)
-      const existingSlotIndex = allAvailability[GUEST_PROFESSOR_EMAIL].findIndex(
+      const existingSlotIndex = allAvailability[GUEST_IDENTIFIER].findIndex(
         (slot) => slot?.id === slotId
       );
       if (existingSlotIndex > -1) {
-        // Update the existing slot
-        allAvailability[GUEST_PROFESSOR_EMAIL][existingSlotIndex] = newBooking;
-         console.log(`[Admin] Guest booking - Updated existing slot: ${slotId}`);
+        allAvailability[GUEST_IDENTIFIER][existingSlotIndex] = newBooking;
       } else {
-        // Add the new booking
-        allAvailability[GUEST_PROFESSOR_EMAIL].push(newBooking);
-         console.log(`[Admin] Guest booking - Added new slot: ${slotId}`);
+        allAvailability[GUEST_IDENTIFIER].push(newBooking);
       }
 
-      // 6. Write the updated availability data back
       await writeData<AllProfessorAvailability>(
         AVAILABILITY_DATA_FILE,
         allAvailability
       );
 
-      // 7. Refresh UI and clear form
       toast({
         title: 'Prenotazione Ospite Riuscita',
         description: `Slot ${time} in ${classroom} prenotato per ${guestName.trim()} il ${format(guestBookingDate, 'dd/MM/yyyy', { locale: it })}.`,
       });
       setGuestName('');
-      setSelectedGuestSlot(null); // Reset selected slot dropdown
-      await loadAvailableGuestSlots(); // Refresh available slots for the selected date
+      setSelectedGuestSlot(null);
+      await loadAvailableGuestSlots();
       await loadData(); // Refresh main booked slots list
     } catch (error: any) {
       console.error('Errore durante la prenotazione ospite:', error);
@@ -887,8 +859,6 @@ export function AdminInterface() {
           <CardContent className="grid gap-4">
             <Tabs defaultValue="schedule-config" className="w-full">
               <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4">
-                {' '}
-                {/* Adjusted cols */}
                 <TabsTrigger value="schedule-config" disabled={isLoading}>
                   Gestione Orario Aule
                 </TabsTrigger>
@@ -983,17 +953,16 @@ export function AdminInterface() {
                                       >
                                         <SelectTrigger className="w-full text-xs sm:text-sm">
                                           <SelectValue placeholder="Assegna">
-                                            {assignedProfessor || 'Assegna'}
+                                            {assignedProfessor === GUEST_IDENTIFIER ? 'Ospite' : (assignedProfessor || 'Assegna')}
                                           </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
                                           <SelectItem value="unassigned">
                                             Non Assegnato
                                           </SelectItem>
-                                          {/* Add Guest Professor Option */}
-                                          <SelectItem value={GUEST_PROFESSOR_EMAIL}>
-                                            Ospite
-                                            (Prenotazione Singola)
+                                          {/* Use GUEST_IDENTIFIER for value */}
+                                          <SelectItem value={GUEST_IDENTIFIER}>
+                                            Ospite (Prenotazione Singola)
                                           </SelectItem>
                                           {professors.map((profEmail) => (
                                             <SelectItem
@@ -1038,8 +1007,6 @@ export function AdminInterface() {
                              className="rounded-md border w-full [&_button]:text-xs [&_caption]:text-sm" // Compact calendar
                              locale={it}
                              disabled={isSavingConfig}
-                             // Ensure future dates can be selected
-                            //  fromDate={new Date()} // Optional: restrict to future dates only
                            />
                          </div>
                          <div className="flex-1">
@@ -1369,7 +1336,7 @@ export function AdminInterface() {
                                 <TableCell>{slot.time}</TableCell>
                                 <TableCell>{slot.classroom}</TableCell>
                                 <TableCell>
-                                  {slot.professorEmail === GUEST_PROFESSOR_EMAIL
+                                  {slot.professorEmail === GUEST_IDENTIFIER
                                     ? 'Ospite'
                                     : slot.professorEmail}
                                 </TableCell>
@@ -1491,5 +1458,3 @@ const buttonVariants = ({ variant }: { variant?: string | null }) => {
    }
    return "bg-primary text-primary-foreground hover:bg-primary/90"; // Default
  };
-
-    

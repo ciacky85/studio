@@ -1,25 +1,20 @@
+
 {
   "carlo.checchi.spam@gmail.com": {
     "password": "8257619t",
     "role": "student",
     "approved": true,
-    "assignedProfessorEmails": null,
     "assignedProfessorEmail": [
-      "lkc.marta@gmail.com"
+      "lkc.marta@gmail.com",
+      "GUEST"
     ]
   },
   "lkc.marta@gmail.com": {
     "password": "8257619t",
     "role": "professor",
     "approved": true,
-    "assignedProfessorEmail": null
-  },
-  "ospite@creativeacademy.it": {
-    "password": "8257619t",
-    "role": "professor",
-    "approved": true,
     "assignedProfessorEmail": [
-      "ospite@creativeacademy.it"
+      "GUEST"
     ]
   }
 }

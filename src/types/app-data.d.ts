@@ -1,3 +1,4 @@
+
 import type { UserData } from './user';
 import type { BookableSlot } from './schedule'; // Use unified schedule type
 import type { ScheduleAssignment } from './schedule'; // Use unified schedule type
@@ -9,8 +10,9 @@ export interface AllUsersData {
 }
 
 // Structure for the availability.json file
+// Key can be professor email or the GUEST_IDENTIFIER
 export interface AllProfessorAvailability {
-    [professorEmail: string]: BookableSlot[];
+    [professorIdentifier: string]: BookableSlot[];
 }
 
 // Structure for the schedule.json file (used for current editing)

@@ -1,3 +1,4 @@
+
 {
   "lkc.marta@gmail.com": [
     {
@@ -20,8 +21,8 @@
       "classroom": "Aula 1 Grande",
       "duration": 60,
       "isAvailable": true,
-      "bookedBy": null,
-      "bookingTime": null,
+      "bookedBy": "carlo.checchi.spam@gmail.com",
+      "bookingTime": "2024-05-02T10:00:00Z",
       "professorEmail": "lkc.marta@gmail.com"
     },
     {
@@ -63,8 +64,8 @@
   ],
   "GUEST": [
     {
-      "id": "2025-05-05-13:00-Aula 1 Grande-GUEST-Ospite_Test_1",
-      "date": "2025-05-05",
+      "id": "2025-05-06-13:00-Aula 1 Grande-GUEST",
+      "date": "2025-05-06",
       "day": "Martedì",
       "time": "13:00",
       "classroom": "Aula 1 Grande",
@@ -75,9 +76,9 @@
       "professorEmail": "GUEST"
     },
     {
-      "id": "2025-05-12-13:00-Aula 1 Grande-GUEST-Anna",
+      "id": "2025-05-12-13:00-Aula 1 Grande-GUEST",
       "date": "2025-05-12",
-      "day": "Martedì",
+      "day": "Lunedì",
       "time": "13:00",
       "classroom": "Aula 1 Grande",
       "duration": 60,
@@ -87,9 +88,9 @@
       "professorEmail": "GUEST"
     },
     {
-      "id": "2025-05-12-14:00-Aula 1 Grande-GUEST-Ospite_test_2",
+      "id": "2025-05-12-14:00-Aula 1 Grande-GUEST",
       "date": "2025-05-12",
-      "day": "Martedì",
+      "day": "Lunedì",
       "time": "14:00",
       "classroom": "Aula 1 Grande",
       "duration": 60,
@@ -97,23 +98,9 @@
       "bookedBy": "Ospite: Ospite test 2",
       "bookingTime": "2025-05-01T21:17:20.689Z",
       "professorEmail": "GUEST"
-    }
-  ],
-  "ospite@creativeacademy.it": [
-    {
-      "id": "2025-05-06-13:00-Aula 1 Grande-ospite@creativeacademy.it",
-      "date": "2025-05-06",
-      "day": "Martedì",
-      "time": "13:00",
-      "classroom": "Aula 1 Grande",
-      "duration": 60,
-      "isAvailable": true,
-      "bookedBy": null,
-      "bookingTime": null,
-      "professorEmail": "ospite@creativeacademy.it"
     },
     {
-      "id": "2025-05-06-14:00-Aula 1 Grande-ospite@creativeacademy.it",
+      "id": "2025-05-06-14:00-Aula 1 Grande-GUEST",
       "date": "2025-05-06",
       "day": "Martedì",
       "time": "14:00",
@@ -122,7 +109,7 @@
       "isAvailable": true,
       "bookedBy": null,
       "bookingTime": null,
-      "professorEmail": "ospite@creativeacademy.it"
+      "professorEmail": "GUEST"
     }
   ]
 }

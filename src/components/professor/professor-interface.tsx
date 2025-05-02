@@ -28,7 +28,7 @@ const USERS_DATA_FILE = 'users';
 const AVAILABILITY_DATA_FILE = 'availability';
 const SCHEDULE_CONFIGURATIONS_FILE = 'scheduleConfigurations'; // Use configurations file
 const LOGGED_IN_USER_KEY = 'loggedInUser'; // Session key (localStorage)
-const GUEST_PROFESSOR_EMAIL = 'ospite@creativeacademy.it'; // Guest Professor constant
+const GUEST_IDENTIFIER = 'GUEST'; // Guest identifier constant
 
 const daysOfWeek = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
@@ -116,8 +116,6 @@ export function ProfessorInterface() {
   // Load availability data and process slots when dependencies are ready
    const loadAllData = useCallback(async () => {
        if (!currentUserEmail || assignedProfessorEmails === null || scheduleConfigurations.length === 0) {
-          // console.log("[Professor] Skipping slot load - waiting for initial data.");
-           // Potentially keep isLoading true or set a specific state?
            setIsLoading(true); // Keep loading if essential data isn't ready
            setDailySlots([]);
            setProfessorBookedSlots([]);
@@ -126,7 +124,6 @@ export function ProfessorInterface() {
            return; // Don't proceed if prerequisites aren't met
        }
 
-       // console.log("[Professor] Starting slot processing...");
        setIsLoading(true);
        try {
            // Load all professor availability data (for booked slots and slots to book)
@@ -173,9 +170,8 @@ export function ProfessorInterface() {
                         const slotId = `${formattedDate}-${hourTime}-${classroom}-${currentUserEmail}`;
                         const existingSlotData = professorExistingSlotsMap.get(slotId);
                         // Make available by default if not explicitly set, unless it's guest
-                        const initialIsAvailable = currentUserEmail === GUEST_PROFESSOR_EMAIL
-                            ? !existingSlotData?.bookedBy // Guest availability is derived
-                            : existingSlotData?.isAvailable ?? false; // Others must explicitly be available
+                        // GUEST handling is removed here as professor interface doesn't manage guest slots directly
+                        const initialIsAvailable = existingSlotData?.isAvailable ?? false;
 
                          // Only show future slots or past booked slots
                          if (!isPastDate || (isPastDate && existingSlotData?.bookedBy)) {
@@ -188,8 +184,6 @@ export function ProfessorInterface() {
                             });
                          }
                     });
-                } else {
-                   // console.log(`[Professor] No relevant configurations for availability date: ${selectedAvailabilityDate}`);
                 }
            }
             setDailySlots(sortSlotsByDateAndTime(generatedDailySlots));
@@ -201,13 +195,13 @@ export function ProfessorInterface() {
             const processedBookedIds = new Set<string>();
             // assignedProfessorEmails is guaranteed non-null here by the initial check
 
-            Object.entries(allProfessorAvailability).forEach(([profEmail, slots]) => {
-                // Check slots booked BY the current user first
+            Object.entries(allProfessorAvailability).forEach(([profIdentifier, slots]) => {
+                 // Check slots booked BY the current user first
                 (slots || []).forEach(slot => {
                      if (slot?.id && slot.classroom && slot.bookedBy === currentUserEmail && slot.duration === 60 && !processedBookedIds.has(slot.id)) {
                         const bookingViewSlot: BookingViewSlot = {
                             id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
-                            professorEmail: slot.professorEmail,
+                            professorEmail: slot.professorEmail, // Keep the actual professor email or GUEST id
                             isBookedByCurrentUser: true,
                             bookingTime: slot.bookingTime || null,
                         };
@@ -216,12 +210,11 @@ export function ProfessorInterface() {
                     }
                 });
 
-                // Check slots from ASSIGNED professors for booking availability
-                if (assignedProfessorEmails.includes(profEmail)) {
+                // Check slots from ASSIGNED professors OR GUEST for booking availability
+                if (assignedProfessorEmails.includes(profIdentifier) || profIdentifier === GUEST_IDENTIFIER) {
                     (slots || []).forEach(slot => {
-                         // Basic slot validation
-                         if (!(slot?.id && slot.classroom && slot.professorEmail === profEmail && slot.duration === 60 && slot.date && slot.time && slot.day && typeof slot.isAvailable === 'boolean')) {
-                              return;
+                         if (!(slot?.id && slot.classroom && slot.professorEmail === profIdentifier && slot.duration === 60 && slot.date && slot.time && slot.day && typeof slot.isAvailable !== 'undefined')) {
+                             return;
                          }
 
                          try {
@@ -243,22 +236,22 @@ export function ProfessorInterface() {
                                              confDay === dayOfWeekBooking &&
                                              confTime === slot.time &&
                                              confClassroom === slot.classroom &&
-                                             assignment.professor === slot.professorEmail;
+                                             assignment.professor === slot.professorEmail; // Use the email from the slot
                                   })
                              );
                              if (!isActiveInAnyConfig) return;
 
-                              // Guest availability is derived, others must be explicitly set
-                               const isActuallyAvailable =
-                                   profEmail === GUEST_PROFESSOR_EMAIL
-                                       ? !slot.bookedBy
-                                       : slot.isAvailable && !slot.bookedBy;
+                             // Availability check: Guest slots are available if not booked, others require isAvailable flag
+                             const isActuallyAvailable =
+                                 profIdentifier === GUEST_IDENTIFIER
+                                     ? !slot.bookedBy
+                                     : slot.isAvailable && !slot.bookedBy;
 
 
                               if (isActuallyAvailable) {
                                    const bookingViewSlot: BookingViewSlot = {
                                        id: slot.id, date: slot.date, day: slot.day, time: slot.time, classroom: slot.classroom, duration: 60,
-                                       professorEmail: slot.professorEmail,
+                                       professorEmail: slot.professorEmail, // Keep actual identifier
                                        isBookedByCurrentUser: false,
                                        bookingTime: null,
                                    };
@@ -352,11 +345,11 @@ export function ProfessorInterface() {
         return;
      }
 
-    // Prevent guest professor from manually changing availability
-    if (currentUserEmail === GUEST_PROFESSOR_EMAIL) {
-        toast({ variant: "destructive", title: "Azione Negata", description: "La disponibilità degli slot Ospite è gestita automaticamente." });
-        return;
-    }
+     // Guests cannot toggle availability - handled via booking/cancellation
+     if (slotToToggle.professorEmail === GUEST_IDENTIFIER) {
+          toast({ variant: "destructive", title: "Azione Negata", description: "La disponibilità degli slot Ospite è gestita automaticamente." });
+          return;
+      }
 
     const updatedSlot = { ...slotToToggle, isAvailable: !slotToToggle.isAvailable };
     const updatedDailySlots = dailySlots.map((slot) => slot.id === id ? updatedSlot : slot);
@@ -383,9 +376,8 @@ export function ProfessorInterface() {
                 let lessonDateTime; try { lessonDateTime = parseISO(`${slotToCancel.date}T${slotToCancel.time}:00`); } catch { throw new Error("Formato data/ora slot non valido."); }
                 if (!isValid(lessonDateTime)) throw new Error("Data/ora lezione non valida.");
                 if (isBefore(lessonDateTime, new Date())) {
-                     // Allow viewing/logging past cancellations but prevent actual cancellation/email
                      toast({ variant: "default", title: "Info", description: "Non puoi cancellare una lezione passata." });
-                     return; // Exit early
+                     return;
                 }
                const bookerEmail = slotToCancel.bookedBy;
                if (!bookerEmail) throw new Error("Slot non prenotato.");
@@ -393,24 +385,26 @@ export function ProfessorInterface() {
                const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
                const formattedTime = slotToCancel.time;
                const classroomInfo = slotToCancel.classroom;
-               const eventTitle = `Lezione in ${classroomInfo} con Prof. ${currentUserEmail}`;
+               // Use GUEST_IDENTIFIER in title if applicable
+               const professorDisplay = currentUserEmail === GUEST_IDENTIFIER ? 'Ospite' : `Prof. ${currentUserEmail}`;
+               const eventTitle = `Lezione in ${classroomInfo} con ${professorDisplay}`;
                const { deleteLink } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitle, eventTitle, classroomInfo);
 
                // Update the slot state
                slotToCancel.bookedBy = null;
                slotToCancel.bookingTime = null;
-               // Professor must manually make the slot available again after cancellation
-               slotToCancel.isAvailable = false; // Explicitly set to not available
-
+               // Slot becomes available ONLY if it's a GUEST slot, otherwise requires manual activation
+               slotToCancel.isAvailable = slotToCancel.professorEmail === GUEST_IDENTIFIER;
 
                allAvailability[currentUserEmail][slotIndex] = slotToCancel;
                await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
 
-               // Send emails only if the lesson wasn't in the past
+               // Send emails
                try {
-                  await sendEmail({ to: bookerEmail, subject: 'Lezione Cancellata dal Professore', html: `<p>Ciao,</p><p>La tua lezione in ${classroomInfo} con il Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata dal professore.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLink}">Rimuovi dal Calendario</a></p>` });
-                  if (currentUserEmail !== GUEST_PROFESSOR_EMAIL) {
-                     await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Lezione Effettuata', html: `<p>Ciao Prof. ${currentUserEmail},</p><p>Hai cancellato la prenotazione di ${bookerEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}. Lo slot rimane NON disponibile finché non lo riattivi manualmente.</p>` });
+                  await sendEmail({ to: bookerEmail, subject: 'Lezione Cancellata dal Professore', html: `<p>Ciao,</p><p>La tua lezione in ${classroomInfo} con ${professorDisplay} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLink}">Rimuovi dal Calendario</a></p>` });
+                  // Don't send confirmation to the GUEST identifier
+                  if (currentUserEmail !== GUEST_IDENTIFIER) {
+                     await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Lezione Effettuata', html: `<p>Ciao Prof. ${currentUserEmail},</p><p>Hai cancellato la prenotazione di ${bookerEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}. Lo slot ${slotToCancel.isAvailable ? 'è di nuovo disponibile' : 'rimane NON disponibile finché non lo riattivi'}.</p>` });
                   }
                } catch (emailError: any) {
                     console.error("Errore invio email cancellazione (prof):", emailError);
@@ -418,7 +412,7 @@ export function ProfessorInterface() {
                     toast({ title: "Avviso", description: `Prenotazione cancellata, ma errore nell'invio email. Dettagli: ${emailError.message || 'Errore sconosciuto'}` });
                 }
 
-               toast({ title: "Prenotazione Cancellata", description: `Prenotazione da ${bookerEmail} cancellata. Lo slot NON è disponibile.` });
+               toast({ title: "Prenotazione Cancellata", description: `Prenotazione da ${bookerEmail} cancellata. Lo slot è ora ${slotToCancel.isAvailable ? 'disponibile' : 'NON disponibile'}.` });
                await loadAllData(); // Refresh all data
 
            } catch (error: any) {
@@ -438,8 +432,9 @@ export function ProfessorInterface() {
        if (currentUserEmail && assignedProfessorEmails) { // Check assignedProfessorEmails here
            setIsLoading(true);
            try {
-                if (!assignedProfessorEmails.includes(slotToBook.professorEmail)) {
-                     throw new Error("Puoi prenotare solo slot di professori a te assegnati.");
+               // Can book with assigned professors OR the GUEST identifier
+                if (!assignedProfessorEmails.includes(slotToBook.professorEmail) && slotToBook.professorEmail !== GUEST_IDENTIFIER) {
+                     throw new Error("Puoi prenotare solo slot di professori a te assegnati o slot Ospite.");
                 }
 
                 const slotDateObj = parseISO(slotToBook.date);
@@ -461,7 +456,7 @@ export function ProfessorInterface() {
                                 confDay === dayOfWeekBooking &&
                                 confTime === slotToBook.time &&
                                 confClassroom === slotToBook.classroom &&
-                                assignment.professor === slotToBook.professorEmail;
+                                assignment.professor === slotToBook.professorEmail; // Check against the actual professor/guest id
                      })
                 );
 
@@ -470,10 +465,12 @@ export function ProfessorInterface() {
                 }
 
                 const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
-                if (!allAvailability[slotToBook.professorEmail]) {
-                    allAvailability[slotToBook.professorEmail] = [];
+                // Use the correct identifier (email or GUEST)
+                const targetIdentifier = slotToBook.professorEmail;
+                if (!allAvailability[targetIdentifier]) {
+                    allAvailability[targetIdentifier] = [];
                 }
-                const targetProfessorSlots = allAvailability[slotToBook.professorEmail];
+                const targetProfessorSlots = allAvailability[targetIdentifier];
 
                 const slotIndex = targetProfessorSlots.findIndex(s => s?.id === slotToBook.id);
 
@@ -481,14 +478,14 @@ export function ProfessorInterface() {
                 if (slotIndex !== -1) {
                    originalSlot = targetProfessorSlots[slotIndex];
                    // Check if still available based on its type (guest vs regular)
-                   const isStillAvailable = slotToBook.professorEmail === GUEST_PROFESSOR_EMAIL
+                   const isStillAvailable = targetIdentifier === GUEST_IDENTIFIER
                        ? !originalSlot.bookedBy // Guest availability derived
                        : originalSlot.isAvailable && !originalSlot.bookedBy; // Others must be explicitly available
 
                    if (!isStillAvailable) {
                        throw new Error("Lo slot non è più disponibile.");
                    }
-                } else if (slotToBook.professorEmail === GUEST_PROFESSOR_EMAIL) {
+                } else if (targetIdentifier === GUEST_IDENTIFIER) {
                     // Guest slots might not pre-exist if never toggled/booked, create entry
                     console.log(`[Professor Booking] Creating new availability entry for guest slot ${slotToBook.id}`);
                     originalSlot = {
@@ -497,6 +494,7 @@ export function ProfessorInterface() {
                         bookedBy: null, // To be filled
                         bookingTime: null, // To be filled
                         day: daysOfWeek[getDay(parseISO(slotToBook.date))], // Ensure day name is correct
+                        professorEmail: GUEST_IDENTIFIER, // Ensure professorEmail is GUEST identifier
                     };
                 } else {
                     // If slot doesn't exist for a non-guest professor, something is wrong
@@ -516,7 +514,7 @@ export function ProfessorInterface() {
                 }
 
                 // Save the updated data
-                allAvailability[slotToBook.professorEmail] = sortSlotsByDateAndTime(targetProfessorSlots);
+                allAvailability[targetIdentifier] = sortSlotsByDateAndTime(targetProfessorSlots);
                 await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
 
                // Prepare email details
@@ -524,7 +522,8 @@ export function ProfessorInterface() {
                const formattedTime = slotToBook.time;
                const classroomInfo = slotToBook.classroom;
                const displayProfessorBooker = currentUserEmail;
-               const displayProfessorTarget = slotToBook.professorEmail === GUEST_PROFESSOR_EMAIL ? 'Ospite' : `Prof. ${slotToBook.professorEmail}`;
+               // Adjust display name for GUEST
+               const displayProfessorTarget = slotToBook.professorEmail === GUEST_IDENTIFIER ? 'Ospite' : `Prof. ${slotToBook.professorEmail}`;
                const eventTitleBooker = `Lezione in ${classroomInfo} con ${displayProfessorTarget}`;
                const eventTitleProfessor = `Lezione in ${classroomInfo} con Prof. ${displayProfessorBooker}`;
                const descriptionBooker = `Lezione prenotata con ${displayProfessorTarget} in ${classroomInfo}.`;
@@ -534,7 +533,8 @@ export function ProfessorInterface() {
 
                 try {
                   await sendEmail({ to: currentUserEmail, subject: 'Conferma Prenotazione Lezione con Collega', html: `<p>Ciao,</p><p>La tua lezione con ${displayProfessorTarget} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è confermata.</p><p>Aggiungi al tuo calendario Google: <a href="${addLinkBooker}">Aggiungi al Calendario</a></p>` });
-                  if (slotToBook.professorEmail !== GUEST_PROFESSOR_EMAIL) {
+                  // Don't send email to the GUEST identifier
+                  if (slotToBook.professorEmail !== GUEST_IDENTIFIER) {
                      await sendEmail({ to: slotToBook.professorEmail, subject: 'Nuova Prenotazione Ricevuta da Collega', html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dal Prof. ${displayProfessorBooker} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}.</p><p>Aggiungi al tuo calendario Google: <a href="${addLinkProfessor}">Aggiungi al Calendario</a></p>` });
                   }
                 } catch (emailError: any) {
@@ -566,14 +566,16 @@ export function ProfessorInterface() {
             setIsLoading(true);
             try {
                 let lessonStartTime; try { lessonStartTime = parseISO(`${slotToCancel.date}T${slotToCancel.time}:00`); } catch { throw new Error("Formato data/ora slot non valido."); }
-                if (!isValid(lessonStartTime)) throw new Error("Data/ora lezione non valida.");
+                 if (!isValid(lessonStartTime)) throw new Error("Data/ora lezione non valida.");
 
                 if (differenceInHours(lessonStartTime, new Date()) < 24) {
                     throw new Error("Impossibile cancellare meno di 24 ore prima.");
                 }
 
                 const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
-                const targetProfessorSlots = allAvailability[slotToCancel.professorEmail];
+                // Use the correct identifier (email or GUEST)
+                const targetIdentifier = slotToCancel.professorEmail;
+                const targetProfessorSlots = allAvailability[targetIdentifier];
                 if (!targetProfessorSlots) throw new Error("Slot professore target non trovati.");
 
                 const slotIndex = targetProfessorSlots.findIndex(s => s?.id === slotToCancel.id);
@@ -587,13 +589,11 @@ export function ProfessorInterface() {
                 // Reset booking info
                 originalSlot.bookedBy = null;
                 originalSlot.bookingTime = null;
-                // Guest slots become available automatically, others retain their previous isAvailable state
-                // For simplicity, we make non-guest slots available again upon cancellation here.
-                // A professor can toggle it back to unavailable if needed.
-                originalSlot.isAvailable = true; // Make available again
+                // Slot becomes available ONLY if it's a GUEST slot, otherwise it should be manually toggled by the owner professor
+                originalSlot.isAvailable = targetIdentifier === GUEST_IDENTIFIER;
 
                 // Update the target professor's list
-                allAvailability[slotToCancel.professorEmail][slotIndex] = originalSlot;
+                allAvailability[targetIdentifier][slotIndex] = originalSlot;
                 await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
 
                 // Prepare email details
@@ -601,7 +601,8 @@ export function ProfessorInterface() {
                 const formattedTime = slotToCancel.time;
                 const classroomInfo = slotToCancel.classroom;
                 const displayProfessorBooker = currentUserEmail;
-                const displayProfessorTarget = slotToCancel.professorEmail === GUEST_PROFESSOR_EMAIL ? 'Ospite' : `Prof. ${slotToCancel.professorEmail}`;
+                // Adjust display name for GUEST
+                const displayProfessorTarget = slotToCancel.professorEmail === GUEST_IDENTIFIER ? 'Ospite' : `Prof. ${slotToCancel.professorEmail}`;
                 const eventTitleBooker = `Lezione in ${classroomInfo} con ${displayProfessorTarget}`;
                 const eventTitleProfessor = `Lezione in ${classroomInfo} con Prof. ${displayProfessorBooker}`;
                 const { deleteLink: deleteLinkBooker } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleBooker, eventTitleBooker, classroomInfo);
@@ -610,7 +611,8 @@ export function ProfessorInterface() {
                 // Send emails
                 try {
                   await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Lezione con Collega', html: `<p>Ciao,</p><p>La tua lezione con ${displayProfessorTarget} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkBooker}">Rimuovi dal Calendario</a></p>` });
-                  if (slotToCancel.professorEmail !== GUEST_PROFESSOR_EMAIL) {
+                  // Don't send email to the GUEST identifier
+                  if (slotToCancel.professorEmail !== GUEST_IDENTIFIER) {
                      await sendEmail({ to: slotToCancel.professorEmail, subject: 'Prenotazione Cancellata da Collega', html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione del Prof. ${displayProfessorBooker} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata. Lo slot è di nuovo disponibile.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>` });
                   }
                 } catch (emailError: any) {
@@ -725,12 +727,12 @@ export function ProfessorInterface() {
                                                          onClick={() => toggleSlotAvailability(slot.id)}
                                                          variant={slot.isAvailable ? 'destructive' : 'default'}
                                                          size="sm"
-                                                         disabled={isLoading || currentUserEmail === GUEST_PROFESSOR_EMAIL} // Disable while loading/saving or if guest
-                                                         title={currentUserEmail === GUEST_PROFESSOR_EMAIL ? "Disponibilità gestita automaticamente per Ospite" : ""}
+                                                         disabled={isLoading || slot.professorEmail === GUEST_IDENTIFIER} // Disable if guest
+                                                         title={slot.professorEmail === GUEST_IDENTIFIER ? "Disponibilità gestita automaticamente per Ospite" : ""}
                                                          className={cn(
                                                              'text-white',
                                                              slot.isAvailable ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700',
-                                                             currentUserEmail === GUEST_PROFESSOR_EMAIL && 'opacity-50 cursor-not-allowed'
+                                                             slot.professorEmail === GUEST_IDENTIFIER && 'opacity-50 cursor-not-allowed'
                                                          )}
                                                      >
                                                          {slot.isAvailable ? 'Rendi Non Disp.' : 'Rendi Disp.'}
@@ -800,9 +802,9 @@ export function ProfessorInterface() {
                      <CardHeader>
                          <CardTitle>Prenota Lezioni con Altri Professori</CardTitle>
                          {(assignedProfessorEmails && assignedProfessorEmails.length > 0) ? (
-                             <CardDescription>Seleziona una data per prenotare slot con i professori assegnati ({assignedProfessorEmails.join(', ')}).</CardDescription>
+                             <CardDescription>Seleziona una data per prenotare slot con i professori assegnati ({assignedProfessorEmails.join(', ')}) o slot Ospite.</CardDescription>
                          ) : (
-                             <CardDescription>Nessun professore assegnato per prenotare lezioni.</CardDescription>
+                             <CardDescription>Nessun professore assegnato per prenotare lezioni (puoi prenotare solo slot Ospite).</CardDescription>
                          )}
                      </CardHeader>
                      <CardContent className="grid gap-6 md:grid-cols-2">
@@ -818,9 +820,7 @@ export function ProfessorInterface() {
                           </div>
                          <div>
                              <h3 className="text-lg font-semibold mb-3">Slot Disponibili per {selectedBookingDate && isValid(selectedBookingDate) ? format(selectedBookingDate, 'dd/MM/yyyy', { locale: it }) : 'Seleziona una data valida'}</h3>
-                             {isLoading ? <p>Caricamento slot...</p> : !assignedProfessorEmails || assignedProfessorEmails.length === 0 ? (
-                                 <p className="text-muted-foreground p-4 text-center">Nessun professore assegnato.</p>
-                             ) : !selectedBookingDate || !isValid(selectedBookingDate) ? (
+                             {isLoading ? <p>Caricamento slot...</p> : !selectedBookingDate || !isValid(selectedBookingDate) ? (
                                      <p className="text-muted-foreground p-4 text-center">Seleziona una data valida.</p>
                              ) : filteredAvailableSlotsToBook.length === 0 ? (
                                          <p className="text-muted-foreground p-4 text-center">Nessuno slot disponibile per la prenotazione.</p>
@@ -833,7 +833,7 @@ export function ProfessorInterface() {
                                                          <TableRow key={`available-to-book-${slot.id}`}>
                                                              <TableCell>{slot.time}</TableCell>
                                                              <TableCell>{slot.classroom}</TableCell>
-                                                             <TableCell>{slot.professorEmail === GUEST_PROFESSOR_EMAIL ? 'Ospite' : slot.professorEmail}</TableCell>
+                                                             <TableCell>{slot.professorEmail === GUEST_IDENTIFIER ? 'Ospite' : slot.professorEmail}</TableCell>
                                                              <TableCell className="text-center">{slot.duration} min</TableCell>
                                                              <TableCell className="text-center">
                                                                  <Button onClick={() => bookLessonWithProfessor(slot)} size="sm" disabled={isLoading}>Prenota</Button>
@@ -850,7 +850,7 @@ export function ProfessorInterface() {
                          <div className="md:col-span-2">
                             <h3 className="text-lg font-semibold mb-3 mt-6">Le Tue Lezioni Prenotate (con altri)</h3>
                             {isLoading ? <p>Caricamento prenotazioni...</p> : myBookedLessons.length === 0 ? (
-                                 <p className="text-muted-foreground p-4 text-center">Non hai prenotato nessuna lezione con altri professori.</p>
+                                 <p className="text-muted-foreground p-4 text-center">Non hai prenotato nessuna lezione con altri professori o ospiti.</p>
                             ) : (
                                  <div className="overflow-x-auto border rounded-md max-h-96">
                                    <Table>
@@ -867,7 +867,7 @@ export function ProfessorInterface() {
                                              <TableCell>{format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it })}</TableCell>
                                              <TableCell>{slot.time}</TableCell>
                                              <TableCell>{slot.classroom}</TableCell>
-                                             <TableCell>{slot.professorEmail === GUEST_PROFESSOR_EMAIL ? 'Ospite' : slot.professorEmail}</TableCell>
+                                             <TableCell>{slot.professorEmail === GUEST_IDENTIFIER ? 'Ospite' : slot.professorEmail}</TableCell>
                                              <TableCell className="text-center">{slot.duration} min</TableCell>
                                              <TableCell className="text-center">
                                               {isPastLesson ? (
@@ -891,5 +891,3 @@ export function ProfessorInterface() {
     </div>
   );
 }
-
-    
