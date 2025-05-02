@@ -1,4 +1,3 @@
-
 // Defines the structure of a bookable slot used across different interfaces
 export interface BookableSlot {
   id: string; // Unique identifier, e.g., 'YYYY-MM-DD-HH:00-ClassroomName-professorEmail'
@@ -22,7 +21,7 @@ export interface ScheduleAssignment {
 export interface BookingViewSlot {
   id: string;
   date: string;
-  day: string; // Added day property
+  day: string; // Day of the week (e.g., 'Lunedì')
   time: string;
   classroom: string;
   duration: number;

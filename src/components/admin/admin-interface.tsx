@@ -32,7 +32,7 @@ import {sendEmail} from '@/services/email';
 import {useToast} from '@/hooks/use-toast';
 import type {UserData, AllUsersData} from '@/types/user';
 import {Separator} from '@/components/ui/separator';
-import { format, parseISO, getDay, isWithinInterval, parse, isBefore, startOfDay } from 'date-fns'; // Added isBefore, startOfDay
+import { format, parseISO, getDay, isWithinInterval, parse, isBefore, startOfDay, isValid } from 'date-fns'; // Added isValid
 import {ManageUserProfessorsDialog} from './manage-user-professors-dialog';
 import {cn} from '@/lib/utils';
 import type {DisplayUser} from '@/types/display-user';
@@ -86,6 +86,7 @@ export const findRelevantConfigurations = (
     try {
       const startDate = parseISO(config.startDate);
       const endDate = parseISO(config.endDate);
+       if (!isValid(startDate) || !isValid(endDate)) return false;
       // Ensure end date is included in the interval check
       return isWithinInterval(date, {start: startDate, end: endDate});
     } catch (e) {
@@ -310,63 +311,65 @@ export function AdminInterface() {
   const approveRegistration = async (email: string) => {
     setIsLoading(true);
     try {
-      const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
-      const userData = allUsers[email];
+        const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
+        const userData = allUsers[email];
 
-      if (userData && !userData.approved) {
-        userData.approved = true;
-        userData.assignedProfessorEmail =
-          userData.assignedProfessorEmail || null; // Initialize if needed
+        if (userData && !userData.approved) {
+            userData.approved = true;
+            // Ensure assignedProfessorEmail is initialized or kept
+            userData.assignedProfessorEmail = userData.assignedProfessorEmail || null;
 
-        allUsers[email] = userData;
-        await writeData(USERS_DATA_FILE, allUsers);
+            allUsers[email] = userData;
+            await writeData(USERS_DATA_FILE, allUsers);
 
-        // Send approval email (best effort)
-         try {
-            await sendEmail({
-                to: email,
-                subject: 'Registrazione Approvata',
-                html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
+            try {
+                await sendEmail({
+                    to: email,
+                    subject: 'Registrazione Approvata',
+                    html: '<p>La tua registrazione è stata approvata. Ora puoi accedere.</p>',
+                });
+            } catch (emailError: any) {
+                console.error("Errore invio email approvazione:", emailError);
+                await logError(emailError, `Admin Approve Registration Email (${email})`);
+                toast({
+                    variant: "default",
+                    title: "Avviso Email",
+                    description: `Registrazione approvata, ma errore invio email a ${email}. Dettagli: ${emailError.message}`,
+                    duration: 7000, // Show longer
+                });
+            }
+
+            await loadData(); // Refresh data after successful approval & email attempt
+
+            toast({
+                title: 'Registrazione Approvata',
+                description: `La registrazione per ${email} è stata approvata.`,
             });
-         } catch (emailError) {
-             console.error("Errore invio email approvazione:", emailError);
-             await logError(emailError, `Admin Approve Registration Email (${email})`);
-             toast({
-                 variant: "default",
-                 title: "Avviso Email",
-                 description: `Registrazione approvata, ma errore invio email a ${email}.`,
-             });
-         }
-
-        await loadData(); // Refresh data after successful approval & email attempt
-
+        } else if (userData && userData.approved) {
+            toast({
+                variant: 'default',
+                title: 'Utente Già Approvato',
+                description: `${email} è già stato approvato.`,
+            });
+        } else {
+            throw new Error('Utente non trovato.');
+        }
+    } catch (error: any) {
+        console.error("Errore durante l'approvazione per:", email, error);
+        await logError(error, `Admin Approve Registration (${email})`);
         toast({
-          title: 'Registrazione Approvata',
-          description: `La registrazione per ${email} è stata approvata.`,
+            variant: "destructive",
+            title: "Errore Approvazione Registrazione",
+            description: `Impossibile approvare la registrazione per ${email}. Errore: ${error.message || 'Errore sconosciuto'}. Controlla errors.log.`,
+            duration: 7000,
         });
-      } else if (userData && userData.approved) {
-        toast({
-          variant: 'default',
-          title: 'Utente Già Approvato',
-          description: `${email} è già stato approvato.`,
-        });
-      } else {
-        throw new Error('Utente non trovato.');
-      }
-    } catch (error) {
-      console.error("Errore durante l'approvazione per:", email, error);
-      await logError(error, `Admin Approve Registration (${email})`);
-      toast({
-        variant: 'destructive',
-        title: 'Errore Approvazione Registrazione',
-        description: `Impossibile approvare la registrazione per ${email}. Controlla errors.log.`,
-      });
-       // Optionally reload data on critical error to ensure consistency
-       await loadData();
+        // Optionally reload data on critical error to ensure consistency
+        await loadData();
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
-  };
+};
+
 
   const rejectRegistration = async (email: string) => {
      setIsLoading(true);
@@ -385,13 +388,14 @@ export function AdminInterface() {
                     subject: 'Registrazione Rifiutata',
                     html: '<p>La tua registrazione è stata rifiutata.</p>',
                 });
-             } catch (emailError) {
+             } catch (emailError: any) {
                  console.error("Errore invio email rifiuto:", emailError);
                  await logError(emailError, `Admin Reject Registration Email (${email})`);
                  toast({
                      variant: "default",
                      title: "Avviso Email",
-                     description: `Registrazione rifiutata, ma errore invio email a ${email}.`,
+                     description: `Registrazione rifiutata, ma errore invio email a ${email}. Dettagli: ${emailError.message}`,
+                      duration: 7000,
                  });
              }
 
@@ -415,13 +419,14 @@ export function AdminInterface() {
                 description: "L'utente è già approvato.",
             });
         }
-     } catch (error) {
+     } catch (error: any) {
          console.error("Errore durante il rifiuto della registrazione per:", email, error);
          await logError(error, `Admin Reject Registration (${email})`);
          toast({
              variant: "destructive",
              title: "Errore Rifiuto Registrazione",
-             description: `Impossibile rifiutare la registrazione per ${email}. Controlla errors.log.`,
+             description: `Impossibile rifiutare la registrazione per ${email}. Errore: ${error.message || 'Errore sconosciuto'}. Controlla errors.log.`,
+             duration: 7000,
          });
           // Optionally reload data on critical error
           await loadData();
@@ -465,6 +470,15 @@ export function AdminInterface() {
       });
       return;
     }
+     if (!isValid(configStartDate) || !isValid(configEndDate)) {
+         toast({ variant: 'destructive', title: 'Date Non Valide', description: 'Seleziona date di inizio e fine valide.' });
+         return;
+     }
+     if (isBefore(configEndDate, configStartDate)) {
+        toast({ variant: 'destructive', title: 'Date Non Valide', description: 'La data di fine non può precedere la data di inizio.' });
+        return;
+     }
+
     if (Object.keys(schedule).length === 0) {
       toast({
         variant: 'destructive',
@@ -486,17 +500,25 @@ export function AdminInterface() {
 
       // Check for identical existing configuration (if not replacing immediately)
       if (!replaceExisting) {
-        const identicalConfig = savedConfigurations.find(
-          (cfg) =>
-            JSON.stringify(cfg.schedule) === JSON.stringify(newConfig.schedule)
-        );
+         // Check based on name only first for simpler replacement workflow
+          const existingConfigByName = savedConfigurations.find(cfg => cfg.name === newConfig.name);
+          if (existingConfigByName) {
+             setConfigToReplace(existingConfigByName);
+             setShowReplaceConfirmDialog(true);
+             setIsSavingConfig(false);
+             return;
+          }
+        // const identicalConfig = savedConfigurations.find(
+        //   (cfg) =>
+        //     JSON.stringify(cfg.schedule) === JSON.stringify(newConfig.schedule)
+        // );
 
-        if (identicalConfig) {
-          setConfigToReplace(identicalConfig);
-          setShowReplaceConfirmDialog(true);
-          setIsSavingConfig(false); // Stop loading until user confirms
-          return; // Wait for user confirmation
-        }
+        // if (identicalConfig) {
+        //   setConfigToReplace(identicalConfig);
+        //   setShowReplaceConfirmDialog(true);
+        //   setIsSavingConfig(false); // Stop loading until user confirms
+        //   return; // Wait for user confirmation
+        // }
       }
 
       let updatedConfigs: ScheduleConfiguration[];
@@ -520,15 +542,16 @@ export function AdminInterface() {
 
       toast({
         title: 'Configurazione Salvata',
-        description: `La configurazione "${newConfig.name}" è stata salvata con successo.`,
+        description: `La configurazione "${newConfig.name}" è stata ${replaceExisting ? 'aggiornata' : 'salvata'} con successo.`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Errore durante il salvataggio della configurazione:', error);
       await logError(error, 'Admin Save Schedule Configuration');
       toast({
         variant: 'destructive',
         title: 'Errore Salvataggio',
-        description: 'Impossibile salvare la configurazione. Controlla errors.log.',
+        description: `Impossibile salvare la configurazione. Errore: ${error.message || 'Errore sconosciuto'}. Controlla errors.log.`,
+         duration: 7000,
       });
     } finally {
       setIsSavingConfig(false);
@@ -546,12 +569,19 @@ export function AdminInterface() {
       setSchedule(configToLoad.schedule);
       setConfigName(configToLoad.name);
       try {
-        setConfigStartDate(parseISO(configToLoad.startDate));
-        setConfigEndDate(parseISO(configToLoad.endDate));
-      } catch (e) {
+        const startDate = parseISO(configToLoad.startDate);
+        const endDate = parseISO(configToLoad.endDate);
+         if (!isValid(startDate) || !isValid(endDate)) {
+            throw new Error("Date configuration non valide");
+         }
+        setConfigStartDate(startDate);
+        setConfigEndDate(endDate);
+      } catch (e: any) {
         console.error('Error parsing dates from loaded config:', e);
+        await logError(e, `Admin Load Configuration Dates (${configId})`);
         setConfigStartDate(undefined);
         setConfigEndDate(undefined);
+         toast({ variant: "destructive", title: "Errore Caricamento Date", description: "Date nella configurazione non valide." });
       }
       toast({title: 'Configurazione Caricata', description: `Configurazione "${configToLoad.name}" caricata nella tabella.`});
     }
@@ -577,10 +607,10 @@ export function AdminInterface() {
       );
       setSavedConfigurations(updatedConfigs);
       toast({title: 'Configurazione Eliminata', description: `Configurazione "${configToDelete.name}" eliminata.`});
-    } catch (error) {
+    } catch (error: any) {
       console.error('Errore eliminazione configurazione:', error);
       await logError(error, 'Admin Delete Configuration');
-      toast({variant: 'destructive', title: 'Errore Eliminazione', description: 'Impossibile eliminare la configurazione. Controlla errors.log.'});
+      toast({variant: 'destructive', title: 'Errore Eliminazione', description: `Impossibile eliminare la configurazione. Errore: ${error.message || 'Errore sconosciuto'}. Controlla errors.log.`, duration: 7000});
     } finally {
       setIsDeletingConfig(false);
       setConfigToDelete(null);
@@ -617,13 +647,14 @@ export function AdminInterface() {
       } else {
         throw new Error('Dati utente non trovati.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Errore durante l'aggiornamento dei professori assegnati:", userEmail, assignedEmails, error);
       await logError(error, `Admin Save User Professors (${userEmail})`);
       toast({
         variant: 'destructive',
         title: 'Errore Aggiornamento',
-        description: `Impossibile aggiornare i professori assegnati. Controlla errors.log.`,
+        description: `Impossibile aggiornare i professori assegnati. Errore: ${error.message || 'Errore sconosciuto'}. Controlla errors.log.`,
+        duration: 7000,
       });
     } finally {
       setIsLoading(false); // Finish loading indicator
@@ -637,17 +668,18 @@ export function AdminInterface() {
 
   // --- Guest Booking Logic ---
 
-  const loadAvailableGuestSlots = useCallback(async () => {
-    if (!guestBookingDate) {
+ const loadAvailableGuestSlots = useCallback(async () => {
+    if (!guestBookingDate || !isValid(guestBookingDate)) {
       setAvailableGuestSlots([]);
       return;
     }
 
     // Don't set isLoading here to avoid flicker when just changing date
-    // setIsLoading(true);
+    // setIsLoading(true); // Maybe add a specific guest loading state if needed
     try {
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
-      const dayOfWeekString = format(guestBookingDate, 'EEEE', {locale: it});
+      const dayOfWeekIndex = getDay(guestBookingDate);
+      const dayOfWeekString = days[dayOfWeekIndex]; // Use index for Italian days array
 
       // Find relevant configurations for the selected guest booking date
       const relevantConfigs = findRelevantConfigurations(
@@ -655,15 +687,21 @@ export function AdminInterface() {
         savedConfigurations
       );
       if (relevantConfigs.length === 0) {
+         console.log(`[Admin] No relevant configurations for guest date: ${formattedDate}`);
         setAvailableGuestSlots([]);
         return;
       }
+       console.log(`[Admin] Found ${relevantConfigs.length} relevant configs for guest date: ${formattedDate}`);
+
 
       // Load all professor availability to check for existing bookings
       const allAvailability = await readData<AllProfessorAvailability>(
         AVAILABILITY_DATA_FILE,
         {}
       );
+      const guestAvailability = allAvailability[GUEST_PROFESSOR_EMAIL] || [];
+       console.log(`[Admin] Guest availability entries: ${guestAvailability.length}`);
+
 
       const potentialGuestAssignments = new Set<string>(); // 'HH:MM-Classroom'
 
@@ -687,6 +725,8 @@ export function AdminInterface() {
           }
         });
       });
+       console.log(`[Admin] Potential guest assignments found for ${dayOfWeekString}:`, Array.from(potentialGuestAssignments));
+
 
       const finalAvailableSlots: string[] = [];
       // Check each potential slot against existing bookings
@@ -695,12 +735,9 @@ export function AdminInterface() {
         const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_PROFESSOR_EMAIL}`; // Construct potential ID
 
         // Check if this slot is already booked in the main availability file
-        let isBooked = false;
-        if (allAvailability[GUEST_PROFESSOR_EMAIL]) {
-          isBooked = allAvailability[GUEST_PROFESSOR_EMAIL].some(
+        const isBooked = guestAvailability.some(
             (slot) => slot?.id === slotId && slot.bookedBy // Check if ID matches and bookedBy is not null/empty
-          );
-        }
+        );
 
         if (!isBooked) {
           finalAvailableSlots.push(timeClassroomKey); // Add "HH:MM-Classroom"
@@ -715,15 +752,17 @@ export function AdminInterface() {
         if (timeCompare !== 0) return timeCompare;
         return classroomA.localeCompare(classroomB);
       });
+        console.log(`[Admin] Final available guest slots for ${formattedDate}:`, finalAvailableSlots);
 
       setAvailableGuestSlots(finalAvailableSlots);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Errore caricamento slot ospite:', error);
       await logError(error, 'Admin Load Guest Slots');
       toast({
         variant: 'destructive',
         title: 'Errore Caricamento Slot Ospite',
-        description: 'Impossibile caricare gli slot disponibili per gli ospiti.',
+        description: `Impossibile caricare gli slot disponibili per gli ospiti. Errore: ${error.message || 'Errore sconosciuto'}`,
+        duration: 7000,
       });
       setAvailableGuestSlots([]);
     } finally {
@@ -731,17 +770,18 @@ export function AdminInterface() {
     }
   }, [guestBookingDate, savedConfigurations, toast]); // Include dependencies
 
+
   // Load guest slots when the date changes
   useEffect(() => {
     loadAvailableGuestSlots();
   }, [loadAvailableGuestSlots]); // Dependency array includes the callback
 
   const handleGuestBooking = async () => {
-    if (!selectedGuestSlot || !guestName.trim() || !guestBookingDate) {
+    if (!selectedGuestSlot || !guestName.trim() || !guestBookingDate || !isValid(guestBookingDate)) {
       toast({
         variant: 'destructive',
         title: 'Dati Mancanti',
-        description: "Seleziona uno slot e inserisci il nome dell'ospite.",
+        description: "Seleziona una data valida, uno slot e inserisci il nome dell'ospite.",
       });
       return;
     }
@@ -750,7 +790,8 @@ export function AdminInterface() {
     try {
       const [time, classroom] = selectedGuestSlot.split('-');
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
-      const dayOfWeekString = format(guestBookingDate, 'EEEE', {locale: it});
+      const dayOfWeekIndex = getDay(guestBookingDate);
+      const dayOfWeekString = days[dayOfWeekIndex]; // Use index for Italian days array
       const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_PROFESSOR_EMAIL}`;
 
       // 1. Read current availability data
@@ -794,9 +835,11 @@ export function AdminInterface() {
       if (existingSlotIndex > -1) {
         // Update the existing slot
         allAvailability[GUEST_PROFESSOR_EMAIL][existingSlotIndex] = newBooking;
+         console.log(`[Admin] Guest booking - Updated existing slot: ${slotId}`);
       } else {
         // Add the new booking
         allAvailability[GUEST_PROFESSOR_EMAIL].push(newBooking);
+         console.log(`[Admin] Guest booking - Added new slot: ${slotId}`);
       }
 
       // 6. Write the updated availability data back
@@ -808,12 +851,12 @@ export function AdminInterface() {
       // 7. Refresh UI and clear form
       toast({
         title: 'Prenotazione Ospite Riuscita',
-        description: `Slot ${time} in ${classroom} prenotato per ${guestName.trim()} il ${format(guestBookingDate, 'dd/MM/yyyy')}.`,
+        description: `Slot ${time} in ${classroom} prenotato per ${guestName.trim()} il ${format(guestBookingDate, 'dd/MM/yyyy', { locale: it })}.`,
       });
       setGuestName('');
-      setSelectedGuestSlot(null);
-      await loadAvailableGuestSlots(); // Refresh available slots
-      await loadData(); // Refresh booked slots list if needed elsewhere
+      setSelectedGuestSlot(null); // Reset selected slot dropdown
+      await loadAvailableGuestSlots(); // Refresh available slots for the selected date
+      await loadData(); // Refresh main booked slots list
     } catch (error: any) {
       console.error('Errore durante la prenotazione ospite:', error);
       await logError(error, 'Admin Guest Booking');
@@ -822,6 +865,7 @@ export function AdminInterface() {
         title: 'Errore Prenotazione Ospite',
         description:
           error.message || 'Impossibile completare la prenotazione ospite.',
+          duration: 7000,
       });
     } finally {
       setIsBookingGuest(false);
@@ -994,6 +1038,8 @@ export function AdminInterface() {
                              className="rounded-md border w-full [&_button]:text-xs [&_caption]:text-sm" // Compact calendar
                              locale={it}
                              disabled={isSavingConfig}
+                             // Ensure future dates can be selected
+                            //  fromDate={new Date()} // Optional: restrict to future dates only
                            />
                          </div>
                          <div className="flex-1">
@@ -1050,10 +1096,10 @@ export function AdminInterface() {
                                 <TableRow key={config.id}>
                                   <TableCell>{config.name}</TableCell>
                                   <TableCell>
-                                    {format(parseISO(config.startDate), 'dd/MM/yyyy')}
+                                    {config.startDate ? format(parseISO(config.startDate), 'dd/MM/yyyy', { locale: it }) : 'N/A'}
                                   </TableCell>
                                   <TableCell>
-                                    {format(parseISO(config.endDate), 'dd/MM/yyyy')}
+                                    {config.endDate ? format(parseISO(config.endDate), 'dd/MM/yyyy', { locale: it }) : 'N/A'}
                                   </TableCell>
                                   <TableCell className="flex gap-2">
                                     <Button
@@ -1105,7 +1151,7 @@ export function AdminInterface() {
                         onSelect={setGuestBookingDate}
                         className="rounded-md border"
                         locale={it}
-                        disabled={(date) => isBefore(date, startOfDay(new Date())) || isLoading}
+                        disabled={(date) => !date || isBefore(date, startOfDay(new Date())) || isLoading}
                       />
                     </div>
                     {/* Guest Available Slots & Booking Form */}
@@ -1118,16 +1164,18 @@ export function AdminInterface() {
                       </h4>
                       {isLoading ? (
                         <p>Caricamento slot...</p>
-                      ) : availableGuestSlots.length === 0 ? (
+                      ) : !guestBookingDate ? (
+                        <p className="text-muted-foreground">Seleziona una data dal calendario.</p>
+                        ) : availableGuestSlots.length === 0 ? (
                         <p className="text-muted-foreground">
                           Nessuno slot 'Ospite' disponibile per questa data
-                          secondo le configurazioni attive.
+                          secondo le configurazioni attive, oppure sono già prenotati.
                         </p>
                       ) : (
                         <Select
                           onValueChange={setSelectedGuestSlot}
                           value={selectedGuestSlot ?? ''}
-                          disabled={isBookingGuest}
+                          disabled={isBookingGuest || isLoading}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Seleziona uno slot" />
@@ -1316,9 +1364,7 @@ export function AdminInterface() {
                             {allBookedSlots.map((slot) => (
                               <TableRow key={`booked-${slot.id}`}>
                                 <TableCell>
-                                  {format(parseISO(slot.date), 'dd/MM/yyyy', {
-                                    locale: it,
-                                  })}
+                                  {slot.date ? format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it }) : 'Data non valida'}
                                 </TableCell>
                                 <TableCell>{slot.time}</TableCell>
                                 <TableCell>{slot.classroom}</TableCell>
@@ -1329,7 +1375,7 @@ export function AdminInterface() {
                                 </TableCell>
                                 <TableCell>{slot.bookedBy}</TableCell>
                                 <TableCell>
-                                  {slot.bookingTime
+                                  {slot.bookingTime && isValid(parseISO(slot.bookingTime))
                                     ? format(
                                       parseISO(slot.bookingTime),
                                       'dd/MM/yyyy HH:mm',
@@ -1375,9 +1421,7 @@ export function AdminInterface() {
           <AlertDialogHeader>
             <AlertDialogTitle>Configurazione Esistente Trovata</AlertDialogTitle>
             <AlertDialogDescription>
-              Esiste già una configurazione con lo stesso orario (
-              {configToReplace?.name || ''}). Vuoi sostituirla con la nuova
-              configurazione "{configName}"?
+              Esiste già una configurazione con il nome "{configToReplace?.name || ''}". Vuoi sostituirla con la nuova configurazione "{configName}"? La sostituzione aggiornerà la configurazione esistente mantenendo il suo ID.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1424,7 +1468,10 @@ export function AdminInterface() {
                <AlertDialogAction
                  onClick={deleteConfiguration}
                  disabled={isDeletingConfig}
-                 className={buttonVariants({ variant: "destructive" })} // Style as destructive
+                 className={cn(
+                   buttonVariants({ variant: "destructive" }), // Use buttonVariants helper
+                   isDeletingConfig ? "opacity-50 cursor-not-allowed" : ""
+                 )}
                >
                  {isDeletingConfig ? 'Eliminazione...' : 'Elimina'}
                </AlertDialogAction>
@@ -1436,11 +1483,13 @@ export function AdminInterface() {
 }
 
 // Helper function to get button variants (if needed elsewhere)
+// Ensure this function is defined or imported if used outside this component
+// (It's used above in the delete confirmation dialog)
 const buttonVariants = ({ variant }: { variant?: string | null }) => {
-   // Return appropriate Tailwind classes based on the variant
    if (variant === "destructive") {
      return "bg-destructive text-destructive-foreground hover:bg-destructive/90";
    }
-   // Add other variants if needed
    return "bg-primary text-primary-foreground hover:bg-primary/90"; // Default
  };
+
+    

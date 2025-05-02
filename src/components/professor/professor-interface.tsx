@@ -1,3 +1,4 @@
+
 'use client';
 
 import {useState, useEffect, useCallback} from 'react';
@@ -87,10 +88,10 @@ export function ProfessorInterface() {
 
                setAssignedProfessorEmails(loadedAssignments);
                setScheduleConfigurations(loadedConfigs);
-           } catch (error) {
+           } catch (error: any) {
                console.error("Failed to load initial professor data:", error);
                await logError(error, 'Professor Load Initial Data');
-               toast({ variant: "destructive", title: "Errore Caricamento Dati", description: "Impossibile caricare dati iniziali." });
+               toast({ variant: "destructive", title: "Errore Caricamento Dati", description: `Impossibile caricare dati iniziali. Errore: ${error.message || 'Errore sconosciuto'}` });
                setAssignedProfessorEmails(null);
                setScheduleConfigurations([]);
            }
@@ -117,6 +118,11 @@ export function ProfessorInterface() {
        if (!currentUserEmail || assignedProfessorEmails === null || scheduleConfigurations.length === 0) {
           // console.log("[Professor] Skipping slot load - waiting for initial data.");
            // Potentially keep isLoading true or set a specific state?
+           setIsLoading(true); // Keep loading if essential data isn't ready
+           setDailySlots([]);
+           setProfessorBookedSlots([]);
+           setAllAvailableSlotsToBook([]);
+           setMyBookedLessons([]);
            return; // Don't proceed if prerequisites aren't met
        }
 
@@ -133,7 +139,7 @@ export function ProfessorInterface() {
 
            // Process slots for the *selected availability date* using RELEVANT configurations
            const generatedDailySlots: BookableSlot[] = []; // Initialize for the date
-           if (selectedAvailabilityDate) {
+           if (selectedAvailabilityDate && isValid(selectedAvailabilityDate)) { // Check date validity
                 const relevantConfigs = findRelevantConfigurations(selectedAvailabilityDate, scheduleConfigurations); // Use imported helper
                 if (relevantConfigs.length > 0) {
                     const formattedDate = format(selectedAvailabilityDate, 'yyyy-MM-dd');
@@ -166,15 +172,16 @@ export function ProfessorInterface() {
                         const [hourTime, classroom] = timeClassroomKey.split('-');
                         const slotId = `${formattedDate}-${hourTime}-${classroom}-${currentUserEmail}`;
                         const existingSlotData = professorExistingSlotsMap.get(slotId);
-                        const initialIsAvailable = existingSlotData?.isAvailable ?? false;
-                        const isAvailableForUI = currentUserEmail === GUEST_PROFESSOR_EMAIL
-                           ? !existingSlotData?.bookedBy
-                           : initialIsAvailable;
+                        // Make available by default if not explicitly set, unless it's guest
+                        const initialIsAvailable = currentUserEmail === GUEST_PROFESSOR_EMAIL
+                            ? !existingSlotData?.bookedBy // Guest availability is derived
+                            : existingSlotData?.isAvailable ?? false; // Others must explicitly be available
 
+                         // Only show future slots or past booked slots
                          if (!isPastDate || (isPastDate && existingSlotData?.bookedBy)) {
                             generatedDailySlots.push({
                                 id: slotId, date: formattedDate, day: dayOfWeekString, time: hourTime, classroom: classroom, duration: 60,
-                                isAvailable: isAvailableForUI,
+                                isAvailable: initialIsAvailable,
                                 bookedBy: existingSlotData?.bookedBy ?? null,
                                 bookingTime: existingSlotData?.bookingTime ?? null,
                                 professorEmail: currentUserEmail,
@@ -212,9 +219,11 @@ export function ProfessorInterface() {
                 // Check slots from ASSIGNED professors for booking availability
                 if (assignedProfessorEmails.includes(profEmail)) {
                     (slots || []).forEach(slot => {
+                         // Basic slot validation
                          if (!(slot?.id && slot.classroom && slot.professorEmail === profEmail && slot.duration === 60 && slot.date && slot.time && slot.day && typeof slot.isAvailable === 'boolean')) {
                               return;
                          }
+
                          try {
                              const slotDateObj = parseISO(slot.date);
                              if (!isValid(slotDateObj)) return;
@@ -239,10 +248,12 @@ export function ProfessorInterface() {
                              );
                              if (!isActiveInAnyConfig) return;
 
-                              const isActuallyAvailable =
+                              // Guest availability is derived, others must be explicitly set
+                               const isActuallyAvailable =
                                    profEmail === GUEST_PROFESSOR_EMAIL
                                        ? !slot.bookedBy
                                        : slot.isAvailable && !slot.bookedBy;
+
 
                               if (isActuallyAvailable) {
                                    const bookingViewSlot: BookingViewSlot = {
@@ -266,10 +277,10 @@ export function ProfessorInterface() {
             setAllAvailableSlotsToBook(sortSlotsByDateAndTime(loadedAllAvailableToBook));
             setMyBookedLessons(sortSlotsByDateAndTime(loadedMyBookings));
 
-       } catch (error) {
+       } catch (error: any) {
            console.error("Failed to load availability/slot data for professor:", error);
            await logError(error, 'Professor Load Availability/Slots');
-           toast({ variant: "destructive", title: "Errore Caricamento Dati", description: "Impossibile caricare i dati di disponibilità." });
+           toast({ variant: "destructive", title: "Errore Caricamento Dati", description: `Impossibile caricare i dati di disponibilità. Errore: ${error.message || 'Errore sconosciuto'}` });
            setDailySlots([]);
            setProfessorBookedSlots([]);
            setAllAvailableSlotsToBook([]);
@@ -288,17 +299,19 @@ export function ProfessorInterface() {
 
    // Save function for professor's OWN availability
    const saveOwnAvailability = useCallback(async (updatedSlotsForDay: BookableSlot[]) => {
-        if (currentUserEmail && selectedAvailabilityDate) {
+        if (currentUserEmail && selectedAvailabilityDate && isValid(selectedAvailabilityDate)) { // Check date validity
              setIsLoading(true); // Indicate saving
              try {
                 const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
                 let currentProfessorSlots = allAvailability[currentUserEmail] || [];
                 const formattedSelectedDate = format(selectedAvailabilityDate, 'yyyy-MM-dd');
 
+                 // Filter out invalid updated slots and ensure they belong to the current professor
                  const validUpdatedSlotsForDay = updatedSlotsForDay.filter(slot =>
                      slot && slot.id && slot.date && slot.time && slot.classroom && typeof slot.duration === 'number' && slot.professorEmail === currentUserEmail
                  );
 
+                 // Merge: Keep slots from other dates, replace/add slots for the selected date
                  const slotsToKeep = currentProfessorSlots.filter(slot => slot?.date !== formattedSelectedDate);
                  const newProfessorSlots = [...slotsToKeep, ...validUpdatedSlotsForDay];
 
@@ -308,19 +321,26 @@ export function ProfessorInterface() {
              } catch(error: any) {
                   console.error("Failed to save own availability:", error);
                   await logError(error, 'Professor Save Own Availability'); // Log error
-                  toast({ variant: "destructive", title: "Errore Salvataggio", description: "Impossibile salvare la disponibilità." });
+                  toast({ variant: "destructive", title: "Errore Salvataggio", description: `Impossibile salvare la disponibilità. Errore: ${error.message || 'Errore sconosciuto'}` });
                   // Consider reloading data on error to revert optimistic UI changes
                   await loadAllData();
              } finally {
                   setIsLoading(false);
              }
+        } else {
+            console.warn("[Professor] Cannot save availability, invalid state:", {currentUserEmail, selectedAvailabilityDate});
+             toast({ variant: "destructive", title: "Errore Salvataggio", description: "Dati utente o data non validi." });
         }
    }, [currentUserEmail, selectedAvailabilityDate, toast, loadAllData]); // Added loadAllData
 
 
   const toggleSlotAvailability = async (id: string) => {
     const slotToToggle = dailySlots.find(slot => slot.id === id);
-    if (!slotToToggle || !selectedAvailabilityDate) { console.error("Slot non trovato o data non selezionata:", id); return; }
+    if (!slotToToggle || !selectedAvailabilityDate || !isValid(selectedAvailabilityDate)) { // Check date validity
+       console.error("Slot non trovato o data non selezionata/valida:", {id, selectedAvailabilityDate});
+        toast({ variant: "destructive", title: "Errore", description: "Slot non trovato o data non valida." });
+        return;
+    }
 
     if (isBefore(selectedAvailabilityDate, startOfDay(new Date())) && !slotToToggle.bookedBy) {
          toast({ variant: "destructive", title: "Azione Negata", description: "Impossibile cambiare la disponibilità per slot passati non prenotati." });
@@ -328,10 +348,11 @@ export function ProfessorInterface() {
     }
 
      if (slotToToggle.bookedBy) {
-        toast({ variant: "destructive", title: "Azione Negata", description: "Impossibile cambiare la disponibilità di uno slot già prenotato." });
+        toast({ variant: "destructive", title: "Azione Negata", description: "Questo slot è prenotato. Cancella prima la prenotazione." });
         return;
      }
 
+    // Prevent guest professor from manually changing availability
     if (currentUserEmail === GUEST_PROFESSOR_EMAIL) {
         toast({ variant: "destructive", title: "Azione Negata", description: "La disponibilità degli slot Ospite è gestita automaticamente." });
         return;
@@ -362,7 +383,9 @@ export function ProfessorInterface() {
                 let lessonDateTime; try { lessonDateTime = parseISO(`${slotToCancel.date}T${slotToCancel.time}:00`); } catch { throw new Error("Formato data/ora slot non valido."); }
                 if (!isValid(lessonDateTime)) throw new Error("Data/ora lezione non valida.");
                 if (isBefore(lessonDateTime, new Date())) {
-                     throw new Error("Impossibile cancellare una lezione passata.");
+                     // Allow viewing/logging past cancellations but prevent actual cancellation/email
+                     toast({ variant: "default", title: "Info", description: "Non puoi cancellare una lezione passata." });
+                     return; // Exit early
                 }
                const bookerEmail = slotToCancel.bookedBy;
                if (!bookerEmail) throw new Error("Slot non prenotato.");
@@ -373,25 +396,29 @@ export function ProfessorInterface() {
                const eventTitle = `Lezione in ${classroomInfo} con Prof. ${currentUserEmail}`;
                const { deleteLink } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitle, eventTitle, classroomInfo);
 
+               // Update the slot state
                slotToCancel.bookedBy = null;
                slotToCancel.bookingTime = null;
-               slotToCancel.isAvailable = currentUserEmail !== GUEST_PROFESSOR_EMAIL;
+               // Professor must manually make the slot available again after cancellation
+               slotToCancel.isAvailable = false; // Explicitly set to not available
+
 
                allAvailability[currentUserEmail][slotIndex] = slotToCancel;
                await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
 
+               // Send emails only if the lesson wasn't in the past
                try {
                   await sendEmail({ to: bookerEmail, subject: 'Lezione Cancellata dal Professore', html: `<p>Ciao,</p><p>La tua lezione in ${classroomInfo} con il Prof. ${currentUserEmail} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata dal professore.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLink}">Rimuovi dal Calendario</a></p>` });
                   if (currentUserEmail !== GUEST_PROFESSOR_EMAIL) {
-                     await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Lezione Effettuata', html: `<p>Ciao Prof. ${currentUserEmail},</p><p>Hai cancellato la prenotazione di ${bookerEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}. Lo slot è di nuovo disponibile.</p>` });
+                     await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Lezione Effettuata', html: `<p>Ciao Prof. ${currentUserEmail},</p><p>Hai cancellato la prenotazione di ${bookerEmail} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}. Lo slot rimane NON disponibile finché non lo riattivi manualmente.</p>` });
                   }
-               } catch (emailError) {
+               } catch (emailError: any) {
                     console.error("Errore invio email cancellazione (prof):", emailError);
                     await logError(emailError, 'Professor Cancel Own Booking (Email)');
-                    toast({ title: "Avviso", description: `Prenotazione cancellata, ma errore nell'invio email.` });
+                    toast({ title: "Avviso", description: `Prenotazione cancellata, ma errore nell'invio email. Dettagli: ${emailError.message || 'Errore sconosciuto'}` });
                 }
 
-               toast({ title: "Prenotazione Cancellata", description: `Prenotazione da ${bookerEmail} cancellata. Lo slot è di nuovo disponibile.` });
+               toast({ title: "Prenotazione Cancellata", description: `Prenotazione da ${bookerEmail} cancellata. Lo slot NON è disponibile.` });
                await loadAllData(); // Refresh all data
 
            } catch (error: any) {
@@ -417,11 +444,15 @@ export function ProfessorInterface() {
 
                 const slotDateObj = parseISO(slotToBook.date);
                  if (!isValid(slotDateObj)) throw new Error("Data slot non valida.");
+                 const slotDateTime = parseISO(`${slotToBook.date}T${slotToBook.time}:00`);
+                 if (!isValid(slotDateTime)) throw new Error("Data/ora slot non valida.");
+                  if (isBefore(slotDateTime, new Date())) {
+                       throw new Error("Non puoi prenotare uno slot nel passato.");
+                  }
 
                 const relevantBookingConfigs = findRelevantConfigurations(slotDateObj, scheduleConfigurations); // Use imported helper
                 const dayIndexBooking = getDay(slotDateObj);
                 const dayOfWeekBooking = daysOfWeek[dayIndexBooking];
-
 
                 const isActiveInAnyConfig = relevantBookingConfigs.some(config =>
                      Object.entries(config.schedule).some(([key, assignment]) => {
@@ -449,42 +480,46 @@ export function ProfessorInterface() {
                 let originalSlot: BookableSlot;
                 if (slotIndex !== -1) {
                    originalSlot = targetProfessorSlots[slotIndex];
-                   let slotDateTime; try { slotDateTime = parseISO(`${originalSlot.date}T${originalSlot.time}:00`); } catch { throw new Error("Formato data/ora slot non valido."); }
-                    if (!isValid(slotDateTime)) throw new Error("Data/ora slot non valida.");
-
+                   // Check if still available based on its type (guest vs regular)
                    const isStillAvailable = slotToBook.professorEmail === GUEST_PROFESSOR_EMAIL
-                       ? !originalSlot.bookedBy
-                       : originalSlot.isAvailable && !originalSlot.bookedBy;
+                       ? !originalSlot.bookedBy // Guest availability derived
+                       : originalSlot.isAvailable && !originalSlot.bookedBy; // Others must be explicitly available
 
-                   if (!isStillAvailable || isBefore(slotDateTime, new Date())) {
-                       throw new Error("Lo slot non è più disponibile o è nel passato.");
+                   if (!isStillAvailable) {
+                       throw new Error("Lo slot non è più disponibile.");
                    }
                 } else if (slotToBook.professorEmail === GUEST_PROFESSOR_EMAIL) {
+                    // Guest slots might not pre-exist if never toggled/booked, create entry
                     console.log(`[Professor Booking] Creating new availability entry for guest slot ${slotToBook.id}`);
                     originalSlot = {
-                        ...slotToBook,
-                        isAvailable: false,
-                        bookedBy: null,
-                        bookingTime: null,
+                        ...slotToBook, // Copy basic info
+                        isAvailable: false, // Immediately mark as unavailable
+                        bookedBy: null, // To be filled
+                        bookingTime: null, // To be filled
+                        day: daysOfWeek[getDay(parseISO(slotToBook.date))], // Ensure day name is correct
                     };
                 } else {
+                    // If slot doesn't exist for a non-guest professor, something is wrong
                     throw new Error("Slot da prenotare non trovato nella disponibilità del professore.");
                 }
 
-
+                // Mark as booked by the current user
                 originalSlot.bookedBy = currentUserEmail;
                 originalSlot.bookingTime = new Date().toISOString();
-                originalSlot.isAvailable = false;
+                originalSlot.isAvailable = false; // Always false when booked
 
+                // Update or add the slot in the target professor's list
                 if (slotIndex !== -1) {
                     targetProfessorSlots[slotIndex] = originalSlot;
                 } else {
-                    targetProfessorSlots.push(originalSlot);
+                    targetProfessorSlots.push(originalSlot); // Add if it was newly created (for guest)
                 }
+
+                // Save the updated data
                 allAvailability[slotToBook.professorEmail] = sortSlotsByDateAndTime(targetProfessorSlots);
                 await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
 
-
+               // Prepare email details
                const formattedDate = format(parseISO(slotToBook.date), 'dd/MM/yyyy', { locale: it });
                const formattedTime = slotToBook.time;
                const classroomInfo = slotToBook.classroom;
@@ -502,10 +537,10 @@ export function ProfessorInterface() {
                   if (slotToBook.professorEmail !== GUEST_PROFESSOR_EMAIL) {
                      await sendEmail({ to: slotToBook.professorEmail, subject: 'Nuova Prenotazione Ricevuta da Collega', html: `<p>Ciao Prof. ${slotToBook.professorEmail},</p><p>Hai ricevuto una nuova prenotazione dal Prof. ${displayProfessorBooker} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo}.</p><p>Aggiungi al tuo calendario Google: <a href="${addLinkProfessor}">Aggiungi al Calendario</a></p>` });
                   }
-                } catch (emailError) {
+                } catch (emailError: any) {
                     console.error("Errore invio email conferma (prof-prof):", emailError);
                     await logError(emailError, 'Professor Book Lesson (Email)');
-                    toast({ title: "Avviso", description: `Prenotazione effettuata, ma errore nell'invio email.` });
+                    toast({ title: "Avviso", description: `Prenotazione effettuata, ma errore nell'invio email. Dettagli: ${emailError.message || 'Errore sconosciuto'}` });
                 }
 
                toast({ title: "Prenotazione Riuscita", description: `Lezione con ${displayProfessorTarget} prenotata.` });
@@ -519,6 +554,9 @@ export function ProfessorInterface() {
            } finally {
                 setIsLoading(false);
            }
+       } else {
+            console.warn("[Professor] Cannot book lesson, invalid state:", {currentUserEmail, assignedProfessorEmails});
+            toast({ variant: "destructive", title: "Errore", description: "Dati utente o professori assegnati non caricati." });
        }
    }, [currentUserEmail, assignedProfessorEmails, loadAllData, toast, scheduleConfigurations]); // Dependencies updated
 
@@ -546,13 +584,19 @@ export function ProfessorInterface() {
                    throw new Error("Non puoi cancellare questa prenotazione.");
                 }
 
+                // Reset booking info
                 originalSlot.bookedBy = null;
                 originalSlot.bookingTime = null;
-                originalSlot.isAvailable = slotToCancel.professorEmail !== GUEST_PROFESSOR_EMAIL;
+                // Guest slots become available automatically, others retain their previous isAvailable state
+                // For simplicity, we make non-guest slots available again upon cancellation here.
+                // A professor can toggle it back to unavailable if needed.
+                originalSlot.isAvailable = true; // Make available again
 
+                // Update the target professor's list
                 allAvailability[slotToCancel.professorEmail][slotIndex] = originalSlot;
                 await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
 
+                // Prepare email details
                 const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
                 const formattedTime = slotToCancel.time;
                 const classroomInfo = slotToCancel.classroom;
@@ -563,15 +607,16 @@ export function ProfessorInterface() {
                 const { deleteLink: deleteLinkBooker } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleBooker, eventTitleBooker, classroomInfo);
                 const { deleteLink: deleteLinkProfessor } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitleProfessor, eventTitleProfessor, classroomInfo);
 
+                // Send emails
                 try {
                   await sendEmail({ to: currentUserEmail, subject: 'Conferma Cancellazione Lezione con Collega', html: `<p>Ciao,</p><p>La tua lezione con ${displayProfessorTarget} in ${classroomInfo} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkBooker}">Rimuovi dal Calendario</a></p>` });
                   if (slotToCancel.professorEmail !== GUEST_PROFESSOR_EMAIL) {
-                     await sendEmail({ to: slotToCancel.professorEmail, subject: 'Prenotazione Cancellata da Collega', html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione del Prof. ${displayProfessorBooker} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>` });
+                     await sendEmail({ to: slotToCancel.professorEmail, subject: 'Prenotazione Cancellata da Collega', html: `<p>Ciao Prof. ${slotToCancel.professorEmail},</p><p>La prenotazione del Prof. ${displayProfessorBooker} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata. Lo slot è di nuovo disponibile.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLinkProfessor}">Rimuovi dal Calendario</a></p>` });
                   }
-                } catch (emailError) {
+                } catch (emailError: any) {
                     console.error("Errore invio email cancellazione (prof-prof):", emailError);
                     await logError(emailError, 'Professor Cancel Lesson (Email)');
-                    toast({ title: "Avviso", description: `Cancellazione effettuata, ma errore nell'invio email.` });
+                    toast({ title: "Avviso", description: `Cancellazione effettuata, ma errore nell'invio email. Dettagli: ${emailError.message || 'Errore sconosciuto'}` });
                 }
 
                 toast({ title: "Prenotazione Cancellata", description: `La tua lezione con ${displayProfessorTarget} è stata cancellata.` });
@@ -584,18 +629,21 @@ export function ProfessorInterface() {
            } finally {
                setIsLoading(false);
            }
+       } else {
+           console.warn("[Professor] Cannot cancel lesson, invalid state:", {currentUserEmail});
+           toast({ variant: "destructive", title: "Errore", description: "Utente non valido." });
        }
    }, [currentUserEmail, loadAllData, toast]); // Dependencies
 
 
    // Filter available slots based on the selected booking date
-    const filteredAvailableSlotsToBook = selectedBookingDate
+    const filteredAvailableSlotsToBook = selectedBookingDate && isValid(selectedBookingDate) // Check validity
       ? allAvailableSlotsToBook.filter(slot => slot.date === format(selectedBookingDate, 'yyyy-MM-dd'))
       : [];
 
-   // Display loading indicator while fetching initial data
-   if (isLoading && (assignedProfessorEmails === null || scheduleConfigurations.length === 0)) {
-       return <div className="flex justify-center items-center h-screen"><p>Caricamento dati iniziali...</p></div>;
+   // Display loading indicator while fetching initial data or slot data
+   if (isLoading) {
+       return <div className="flex justify-center items-center h-screen"><p>Caricamento dati...</p></div>;
    }
 
 
@@ -619,16 +667,17 @@ export function ProfessorInterface() {
                             <Calendar
                                 locale={it} mode="single" selected={selectedAvailabilityDate} onSelect={setSelectedAvailabilityDate}
                                 className="rounded-md border"
-                                disabled={(date) => (isBefore(date, startOfDay(new Date())) && !professorBookedSlots.some(slot => slot.date === format(date, 'yyyy-MM-dd'))) || isLoading}
+                                // Only disable truly past days where no booking exists
+                                disabled={(date) => (!date || (isBefore(date, startOfDay(new Date())) && !professorBookedSlots.some(slot => slot.date === format(date, 'yyyy-MM-dd')))) || isLoading}
                             />
                         </div>
                         <div>
                             <h3 className="text-lg font-semibold mb-3">
-                              Gestisci Slot per {selectedAvailabilityDate ? format(selectedAvailabilityDate, 'dd/MM/yyyy', { locale: it }) : 'Nessuna data selezionata'}
+                              Gestisci Slot per {selectedAvailabilityDate && isValid(selectedAvailabilityDate) ? format(selectedAvailabilityDate, 'dd/MM/yyyy', { locale: it }) : 'Seleziona una data valida'}
                             </h3>
                             {isLoading ? <p>Caricamento slot...</p> : dailySlots.length === 0 ? (
                                 <p className="text-muted-foreground p-4 text-center">
-                                   {selectedAvailabilityDate ? (isBefore(selectedAvailabilityDate, startOfDay(new Date())) ? "Non puoi gestire slot passati." : `Nessuno slot assegnato per te il ${daysOfWeek[getDay(selectedAvailabilityDate)]} da una configurazione valida.`) : 'Seleziona una data.'}
+                                   {!selectedAvailabilityDate || !isValid(selectedAvailabilityDate) ? 'Seleziona una data valida.' : (isBefore(selectedAvailabilityDate, startOfDay(new Date())) ? "Non puoi gestire slot passati." : `Nessuno slot assegnato per te il ${daysOfWeek[getDay(selectedAvailabilityDate)]} da una configurazione valida.`)}
                                 </p>
                             ) : (
                                 <div className="overflow-x-auto border rounded-md max-h-96">
@@ -666,7 +715,7 @@ export function ProfessorInterface() {
                                             <TableCell className={cn(statusColor, "font-medium")}>{statusText}</TableCell>
                                             <TableCell className="text-center">
                                                   {isBooked ? (
-                                                    // Show 'Prenotato' text, non-clickable in calendar view
+                                                    // Display non-clickable "Prenotato" status here
                                                     <span className="text-muted-foreground font-normal px-1 italic">Prenotato</span>
                                                   ) : isPastAndNotBooked ? (
                                                       <span className="text-muted-foreground font-normal px-1 italic">Passato</span>
@@ -764,15 +813,15 @@ export function ProfessorInterface() {
                                   selected={selectedBookingDate}
                                   onSelect={setSelectedBookingDate}
                                   className="rounded-md border"
-                                  disabled={(date) => isBefore(date, startOfDay(new Date())) || isLoading}
+                                  disabled={(date) => !date || isBefore(date, startOfDay(new Date())) || isLoading}
                               />
                           </div>
                          <div>
-                             <h3 className="text-lg font-semibold mb-3">Slot Disponibili per {selectedBookingDate ? format(selectedBookingDate, 'dd/MM/yyyy', { locale: it }) : 'Seleziona una data'}</h3>
+                             <h3 className="text-lg font-semibold mb-3">Slot Disponibili per {selectedBookingDate && isValid(selectedBookingDate) ? format(selectedBookingDate, 'dd/MM/yyyy', { locale: it }) : 'Seleziona una data valida'}</h3>
                              {isLoading ? <p>Caricamento slot...</p> : !assignedProfessorEmails || assignedProfessorEmails.length === 0 ? (
                                  <p className="text-muted-foreground p-4 text-center">Nessun professore assegnato.</p>
-                             ) : !selectedBookingDate ? (
-                                     <p className="text-muted-foreground p-4 text-center">Seleziona una data.</p>
+                             ) : !selectedBookingDate || !isValid(selectedBookingDate) ? (
+                                     <p className="text-muted-foreground p-4 text-center">Seleziona una data valida.</p>
                              ) : filteredAvailableSlotsToBook.length === 0 ? (
                                          <p className="text-muted-foreground p-4 text-center">Nessuno slot disponibile per la prenotazione.</p>
                                      ) : (
@@ -842,3 +891,5 @@ export function ProfessorInterface() {
     </div>
   );
 }
+
+    
