@@ -1,4 +1,3 @@
-
 'use client';
 
 import {useState, useEffect, useCallback} from 'react';
@@ -76,10 +75,11 @@ const classrooms = ['Aula 1 Grande', 'Aula 2 Piccola'];
 
 // Helper function to find relevant configurations for a given date
 export const findRelevantConfigurations = (
-  date: Date,
+  date: Date | undefined, // Allow undefined date
   allConfigs: ScheduleConfiguration[]
 ): ScheduleConfiguration[] => {
-  if (!date || !allConfigs || allConfigs.length === 0) {
+  // Return empty array if date is invalid or configs are missing
+   if (!date || !isValid(date) || !allConfigs || allConfigs.length === 0) {
     return [];
   }
   return allConfigs.filter((config) => {
@@ -223,9 +223,6 @@ export function AdminInterface() {
       let idCounter = 1;
 
       Object.entries(allUsers).forEach(([email, userData]) => {
-        // Skip the removed ospite@creativeacademy.it user if it somehow still exists
-        // if (email === 'ospite@creativeacademy.it') return;
-
         if (userData && userData.role && typeof userData.approved === 'boolean') {
           const name = email.split('@')[0];
           const userDisplayData: DisplayUser = {
@@ -261,9 +258,6 @@ export function AdminInterface() {
       );
       const loadedAllBooked: BookableSlot[] = [];
       Object.entries(allProfessorAvailability).forEach(([professorIdentifier, slots]) => {
-          // Skip slots from the removed ospite@creativeacademy.it
-          // if (professorIdentifier === 'ospite@creativeacademy.it') return;
-
           (slots || []).flat().forEach((slot) => {
               if (
                 slot &&
@@ -466,7 +460,8 @@ export function AdminInterface() {
   };
 
   const saveScheduleConfiguration = async (
-    replaceExisting: boolean = false
+    replaceExisting: boolean = false,
+    existingConfigId?: string
   ) => {
     if (!configName || !configStartDate || !configEndDate) {
       toast({
@@ -497,37 +492,38 @@ export function AdminInterface() {
 
     setIsSavingConfig(true);
     try {
-      const newConfig: ScheduleConfiguration = {
-        id: configToReplace && replaceExisting ? configToReplace.id : Date.now().toString(), // Reuse ID if replacing
-        name: configName,
-        startDate: format(configStartDate, 'yyyy-MM-dd'),
-        endDate: format(configEndDate, 'yyyy-MM-dd'),
-        schedule: schedule, // The current state of the schedule grid
-      };
+        const newConfig: ScheduleConfiguration = {
+            id: replaceExisting && existingConfigId ? existingConfigId : Date.now().toString(), // Reuse ID if replacing
+            name: configName,
+            startDate: format(configStartDate, 'yyyy-MM-dd'),
+            endDate: format(configEndDate, 'yyyy-MM-dd'),
+            schedule: schedule, // The current state of the schedule grid
+        };
 
-      // Check for identical existing configuration (if not replacing immediately)
-      if (!replaceExisting) {
-         // Check based on name only first for simpler replacement workflow
-          const existingConfigByName = savedConfigurations.find(cfg => cfg.name === newConfig.name);
-          if (existingConfigByName) {
-             setConfigToReplace(existingConfigByName);
-             setShowReplaceConfirmDialog(true);
-             setIsSavingConfig(false);
-             return;
-          }
-      }
+        // Check for existing config by name if not directly replacing via dialog
+        if (!replaceExisting) {
+            const existingConfigByName = savedConfigurations.find(cfg => cfg.name === newConfig.name);
+            if (existingConfigByName) {
+                setConfigToReplace(existingConfigByName); // Set the target for potential replacement
+                setShowReplaceConfirmDialog(true); // Show confirmation dialog
+                setIsSavingConfig(false); // Stop saving process here, wait for dialog response
+                return; // Exit function
+            }
+        }
 
-      let updatedConfigs: ScheduleConfiguration[];
-      if (replaceExisting && configToReplace) {
-        // Replace the existing configuration
-        updatedConfigs = savedConfigurations.map((cfg) =>
-          cfg.id === configToReplace.id ? newConfig : cfg
-        );
-        setConfigToReplace(null); // Reset replacement target
-      } else {
-        // Add the new configuration
-        updatedConfigs = [...savedConfigurations, newConfig];
-      }
+
+        // Proceed with saving/replacing
+        let updatedConfigs: ScheduleConfiguration[];
+        if (replaceExisting && configToReplace) { // Ensure configToReplace is set when replacing
+            updatedConfigs = savedConfigurations.map((cfg) =>
+              cfg.id === configToReplace.id ? newConfig : cfg
+            );
+            setConfigToReplace(null); // Reset replacement target
+        } else {
+            // Add the new configuration
+            updatedConfigs = [...savedConfigurations, newConfig];
+        }
+
 
       await writeData<AllScheduleConfigurations>(
         SCHEDULE_CONFIGURATIONS_FILE,
@@ -555,9 +551,14 @@ export function AdminInterface() {
     }
   };
 
-  const handleReplaceConfirm = () => {
-    saveScheduleConfiguration(true); // Call save again with replace flag
-  };
+   // Handler for the confirmation dialog's "Replace" action
+   const handleReplaceConfirm = () => {
+     if (configToReplace) {
+       saveScheduleConfiguration(true, configToReplace.id); // Call save again with replace flag and ID
+     }
+     setShowReplaceConfirmDialog(false); // Close dialog regardless
+   };
+
 
   const loadConfiguration = (configId: string) => {
     const configToLoad = savedConfigurations.find((cfg) => cfg.id === configId);
@@ -680,6 +681,7 @@ export function AdminInterface() {
         savedConfigurations
       );
       if (relevantConfigs.length === 0) {
+         console.log(`[Admin Guest] Nessuna configurazione valida trovata per ${formattedDate}`);
         setAvailableGuestSlots([]);
         return;
       }
@@ -714,6 +716,9 @@ export function AdminInterface() {
         });
       });
 
+       console.log(`[Admin Guest] Potential guest slots for ${formattedDate} (${dayOfWeekString}):`, Array.from(potentialGuestAssignments));
+
+
       const finalAvailableSlots: string[] = [];
       potentialGuestAssignments.forEach((timeClassroomKey) => {
         const [time, classroom] = timeClassroomKey.split('-');
@@ -738,6 +743,7 @@ export function AdminInterface() {
         return classroomA.localeCompare(classroomB);
       });
 
+       console.log(`[Admin Guest] Final available guest slots for ${formattedDate}:`, finalAvailableSlots);
       setAvailableGuestSlots(finalAvailableSlots);
     } catch (error: any) {
       console.error('Errore caricamento slot ospite:', error);
@@ -1023,7 +1029,7 @@ export function AdminInterface() {
                          </div>
                        <div className="flex flex-col sm:flex-row gap-2">
                           <Button
-                            onClick={() => saveScheduleConfiguration()}
+                            onClick={() => saveScheduleConfiguration(false)} // Initial save attempt without replace flag
                             disabled={isSavingConfig || isLoading}
                           >
                             {isSavingConfig ? 'Salvataggio...' : 'Salva Configurazione'}
