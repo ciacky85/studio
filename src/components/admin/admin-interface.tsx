@@ -82,13 +82,14 @@ export const findRelevantConfigurations = (
    if (!date || !isValid(date) || !allConfigs || allConfigs.length === 0) {
     return [];
   }
+  const targetDateStart = startOfDay(date); // Ensure comparison is at the start of the day
   return allConfigs.filter((config) => {
     try {
       const startDate = parseISO(config.startDate);
       const endDate = parseISO(config.endDate);
        if (!isValid(startDate) || !isValid(endDate)) return false;
-      // Ensure end date is included in the interval check
-      return isWithinInterval(date, {start: startDate, end: endDate});
+      // Use startOfDay for comparison to ensure inclusivity
+      return isWithinInterval(targetDateStart, {start: startOfDay(startDate), end: startOfDay(endDate)});
     } catch (e) {
       console.error(
         `Error parsing dates for configuration ${config.id} (${config.name}):`,
@@ -681,7 +682,9 @@ export function AdminInterface() {
     try {
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
       const dayOfWeekIndex = getDay(guestBookingDate);
-      const dayOfWeekString = days[dayOfWeekIndex]; // Use index for Italian days array
+       // Adjust day index: date-fns uses 0 for Sunday, we use 0 for Monday internally in 'days' array
+       const adjustedDayIndex = (dayOfWeekIndex === 0 ? 6 : dayOfWeekIndex - 1); // Convert Sunday (0) to 6, others shift down by 1
+       const dayOfWeekString = days[adjustedDayIndex]; // Use index for Italian days array
 
       const relevantConfigs = findRelevantConfigurations(
         guestBookingDate,
@@ -692,6 +695,7 @@ export function AdminInterface() {
         setAvailableGuestSlots([]);
         return;
       }
+       console.log(`[Admin Guest] Config trovate per ${formattedDate}: ${relevantConfigs.map(c => c.name).join(', ')}`);
 
       // Load all availability to check for existing bookings
       const allAvailability = await readData<AllProfessorAvailability>(
@@ -700,6 +704,8 @@ export function AdminInterface() {
       );
       // Get availability using the GUEST_IDENTIFIER
       const guestAvailability = allAvailability[GUEST_IDENTIFIER] || [];
+      console.log(`[Admin Guest] Loaded guest availability slots: ${guestAvailability.length}`);
+
 
       const potentialGuestAssignments = new Set<string>(); // 'HH:MM-Classroom'
 
@@ -723,7 +729,7 @@ export function AdminInterface() {
         });
       });
 
-       console.log(`[Admin Guest] Potential guest slots for ${formattedDate} (${dayOfWeekString}):`, Array.from(potentialGuestAssignments));
+       console.log(`[Admin Guest] Potential guest slots from configs for ${formattedDate} (${dayOfWeekString}):`, Array.from(potentialGuestAssignments));
 
 
       const finalAvailableSlots: string[] = [];
@@ -750,7 +756,7 @@ export function AdminInterface() {
         return classroomA.localeCompare(classroomB);
       });
 
-       console.log(`[Admin Guest] Final available guest slots for ${formattedDate}:`, finalAvailableSlots);
+       console.log(`[Admin Guest] Final available (unbooked) guest slots for ${formattedDate}:`, finalAvailableSlots);
       setAvailableGuestSlots(finalAvailableSlots);
     } catch (error: any) {
       console.error('Errore caricamento slot ospite:', error);
@@ -786,7 +792,8 @@ export function AdminInterface() {
       const [time, classroom] = selectedGuestSlot.split('-');
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
       const dayOfWeekIndex = getDay(guestBookingDate);
-      const dayOfWeekString = days[dayOfWeekIndex];
+       const adjustedDayIndex = (dayOfWeekIndex === 0 ? 6 : dayOfWeekIndex - 1); // Convert Sunday (0) to 6, others shift down by 1
+       const dayOfWeekString = days[adjustedDayIndex];
       // Use GUEST_IDENTIFIER for the slot ID
       const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_IDENTIFIER}`;
 
@@ -1144,8 +1151,8 @@ export function AdminInterface() {
                       </h4>
                       {isLoading ? (
                         <p>Caricamento slot...</p>
-                      ) : !guestBookingDate ? (
-                        <p className="text-muted-foreground">Seleziona una data dal calendario.</p>
+                      ) : !guestBookingDate || !isValid(guestBookingDate)? (
+                        <p className="text-muted-foreground">Seleziona una data valida dal calendario.</p>
                         ) : availableGuestSlots.length === 0 ? (
                         <p className="text-muted-foreground">
                           Nessuno slot 'Ospite' disponibile per questa data

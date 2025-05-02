@@ -1,6 +1,6 @@
-
 [
   {
+    "id": "1746135347637",
     "name": "Maggio 1",
     "startDate": "2025-05-01",
     "endDate": "2025-05-11",
@@ -37,9 +37,11 @@
       },
       "Mercoledì-07:00-Aula 2 Piccola": {
         "professor": "GUEST"
+      },
+      "Mercoledì-07:00-Aula 1 Grande": {
+        "professor": "GUEST"
       }
-    },
-    "id": "1746135347637"
+    }
   },
   {
     "name": "Maggio 2",
