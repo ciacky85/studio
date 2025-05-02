@@ -28,7 +28,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {sendEmail} from '@/services/email';
-import {useToast} from '@/hooks/use-toast';
+import {useToast} from "@/hooks/use-toast";
 import type {UserData, AllUsersData} from '@/types/user';
 import {Separator} from '@/components/ui/separator';
 import { format, parseISO, getDay, isWithinInterval, parse, isBefore, startOfDay, isValid } from 'date-fns'; // Added isValid
@@ -364,7 +364,7 @@ export function AdminInterface() {
             description: `Impossibile approvare la registrazione per ${email}. Errore: ${error.message || 'Errore sconosciuto'}. Controlla errors.log.`,
             duration: 7000,
         });
-        // Optionally reload data on critical error to ensure consistency
+        // Optionally reload data on critical error to ensure UI consistency
         await loadData();
     } finally {
         setIsLoading(false);
@@ -459,105 +459,112 @@ export function AdminInterface() {
     toast({title: 'Tabella Orario Resettata'});
   };
 
-  const saveScheduleConfiguration = async (
-    replaceExisting: boolean = false,
-    existingConfigId?: string
-  ) => {
-    if (!configName || !configStartDate || !configEndDate) {
-      toast({
-        variant: 'destructive',
-        title: 'Dati Mancanti',
-        description:
-          'Inserisci nome, data di inizio e data di fine per la configurazione.',
-      });
-      return;
-    }
-     if (!isValid(configStartDate) || !isValid(configEndDate)) {
-         toast({ variant: 'destructive', title: 'Date Non Valide', description: 'Seleziona date di inizio e fine valide.' });
-         return;
+   const saveScheduleConfiguration = async (
+     replaceExisting: boolean = false,
+     existingConfigId?: string
+   ) => {
+     // --- Initial Validation ---
+     if (!configName) {
+       toast({ variant: 'destructive', title: 'Dati Mancanti', description: 'Inserisci un nome per la configurazione.' });
+       return;
      }
-     if (isBefore(configEndDate, configStartDate)) {
-        toast({ variant: 'destructive', title: 'Date Non Valide', description: 'La data di fine non può precedere la data di inizio.' });
+     if (!configStartDate || !isValid(configStartDate)) {
+        toast({ variant: 'destructive', title: 'Data Inizio Non Valida', description: 'Seleziona una data di inizio valida.' });
         return;
      }
-
-    if (Object.keys(schedule).length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Orario Vuoto',
-        description: 'Assegna almeno uno slot orario prima di salvare.',
-      });
-      return;
-    }
-
-    setIsSavingConfig(true);
-    try {
-        const newConfig: ScheduleConfiguration = {
-            id: replaceExisting && existingConfigId ? existingConfigId : Date.now().toString(), // Reuse ID if replacing
-            name: configName,
-            startDate: format(configStartDate, 'yyyy-MM-dd'),
-            endDate: format(configEndDate, 'yyyy-MM-dd'),
-            schedule: schedule, // The current state of the schedule grid
-        };
-
-        // Check for existing config by name if not directly replacing via dialog
-        if (!replaceExisting) {
-            const existingConfigByName = savedConfigurations.find(cfg => cfg.name === newConfig.name);
-            if (existingConfigByName) {
-                setConfigToReplace(existingConfigByName); // Set the target for potential replacement
-                setShowReplaceConfirmDialog(true); // Show confirmation dialog
-                setIsSavingConfig(false); // Stop saving process here, wait for dialog response
-                return; // Exit function
-            }
-        }
-
-
-        // Proceed with saving/replacing
-        let updatedConfigs: ScheduleConfiguration[];
-        if (replaceExisting && configToReplace) { // Ensure configToReplace is set when replacing
-            updatedConfigs = savedConfigurations.map((cfg) =>
-              cfg.id === configToReplace.id ? newConfig : cfg
-            );
-            setConfigToReplace(null); // Reset replacement target
-        } else {
-            // Add the new configuration
-            updatedConfigs = [...savedConfigurations, newConfig];
-        }
-
-
-      await writeData<AllScheduleConfigurations>(
-        SCHEDULE_CONFIGURATIONS_FILE,
-        updatedConfigs
-      );
-      setSavedConfigurations(updatedConfigs);
-      resetScheduleConfiguration(); // Clear the form after saving
-
-      toast({
-        title: 'Configurazione Salvata',
-        description: `La configurazione "${newConfig.name}" è stata ${replaceExisting ? 'aggiornata' : 'salvata'} con successo.`,
-      });
-    } catch (error: any) {
-      console.error('Errore durante il salvataggio della configurazione:', error);
-      await logError(error, 'Admin Save Schedule Configuration');
-      toast({
-        variant: 'destructive',
-        title: 'Errore Salvataggio',
-        description: `Impossibile salvare la configurazione. Errore: ${error.message || 'Errore sconosciuto'}. Controlla errors.log.`,
-         duration: 7000,
-      });
-    } finally {
-      setIsSavingConfig(false);
-      setShowReplaceConfirmDialog(false); // Ensure dialog is closed
-    }
-  };
-
-   // Handler for the confirmation dialog's "Replace" action
-   const handleReplaceConfirm = () => {
-     if (configToReplace) {
-       saveScheduleConfiguration(true, configToReplace.id); // Call save again with replace flag and ID
+      if (!configEndDate || !isValid(configEndDate)) {
+          toast({ variant: 'destructive', title: 'Data Fine Non Valida', description: 'Seleziona una data di fine valida.' });
+          return;
+      }
+      if (isBefore(configEndDate, configStartDate)) {
+         toast({ variant: 'destructive', title: 'Date Non Valide', description: 'La data di fine non può precedere la data di inizio.' });
+         return;
+      }
+     if (Object.keys(schedule).length === 0) {
+       toast({ variant: 'destructive', title: 'Orario Vuoto', description: 'Assegna almeno uno slot orario prima di salvare.' });
+       return;
      }
-     setShowReplaceConfirmDialog(false); // Close dialog regardless
+
+     // --- Check for Existing Configuration (if not explicitly replacing via dialog) ---
+     if (!replaceExisting) {
+       const existingConfigByName = savedConfigurations.find(cfg => cfg.name === configName);
+       if (existingConfigByName) {
+         console.log('[Admin] Existing config found by name, showing replace dialog for:', existingConfigByName.name);
+         setConfigToReplace(existingConfigByName);
+         setShowReplaceConfirmDialog(true);
+         // Don't set isSavingConfig yet, wait for dialog
+         return; // Exit function, wait for dialog confirmation
+       }
+     }
+
+     // --- Proceed with Saving/Replacing ---
+     setIsSavingConfig(true); // Set loading state *before* async operations
+     try {
+       const newConfig: ScheduleConfiguration = {
+         id: replaceExisting && existingConfigId ? existingConfigId : Date.now().toString(),
+         name: configName,
+         startDate: format(configStartDate, 'yyyy-MM-dd'),
+         endDate: format(configEndDate, 'yyyy-MM-dd'),
+         schedule: schedule,
+       };
+
+       let updatedConfigs: ScheduleConfiguration[];
+       if (replaceExisting && existingConfigId) { // Ensure ID exists when replacing
+           console.log(`[Admin] Replacing configuration with ID: ${existingConfigId}`);
+           updatedConfigs = savedConfigurations.map((cfg) =>
+             cfg.id === existingConfigId ? newConfig : cfg // Use existingConfigId from parameter
+           );
+           setConfigToReplace(null); // Reset replacement target after successful preparation
+       } else {
+           console.log(`[Admin] Adding new configuration: ${newConfig.name}`);
+           updatedConfigs = [...savedConfigurations, newConfig];
+       }
+
+       // Write data to file
+       console.log('[Admin] Writing configurations to file...');
+       await writeData<AllScheduleConfigurations>(
+         SCHEDULE_CONFIGURATIONS_FILE,
+         updatedConfigs
+       );
+       console.log('[Admin] Configurations successfully written.');
+
+       // Update state and reset form
+       setSavedConfigurations(updatedConfigs);
+       resetScheduleConfiguration(); // Clear the form AFTER successful save
+
+       toast({
+         title: 'Configurazione Salvata',
+         description: `La configurazione "${newConfig.name}" è stata ${replaceExisting ? 'aggiornata' : 'salvata'} con successo.`,
+       });
+
+     } catch (error: any) {
+       console.error('Errore durante il salvataggio della configurazione:', error);
+       await logError(error, 'Admin Save Schedule Configuration');
+       toast({
+         variant: 'destructive',
+         title: 'Errore Salvataggio',
+         description: `Impossibile salvare la configurazione. Errore: ${error.message || 'Errore sconosciuto'}. Controlla errors.log.`,
+         duration: 7000,
+       });
+     } finally {
+       // Ensure state is reset regardless of success or failure
+       setIsSavingConfig(false);
+       setShowReplaceConfirmDialog(false); // Close dialog if it was open
+       // Don't reset configToReplace here, it's reset inside the replace logic or on dialog cancel
+     }
    };
+
+    // Handler for the confirmation dialog's "Replace" action
+    const handleReplaceConfirm = () => {
+      if (configToReplace) {
+        console.log('[Admin] Confirmed replacement for:', configToReplace.name);
+        // Pass the ID of the config to be replaced
+        saveScheduleConfiguration(true, configToReplace.id);
+      } else {
+        console.error('[Admin] Replace confirmed but configToReplace is null!');
+      }
+      setShowReplaceConfirmDialog(false); // Close dialog
+    };
 
 
   const loadConfiguration = (configId: string) => {
