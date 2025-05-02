@@ -1,4 +1,3 @@
-
 'use client';
 
 import {useState, useEffect} from 'react';
@@ -10,10 +9,9 @@ import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/compo
 import {Input} from '@/components/ui/input';
 import Link from 'next/link';
 import {useRouter, usePathname} from 'next/navigation';
-import { readData } from '@/services/data-storage';
-// Correctly import types from their respective files
-import type { AllUsersData } from '@/types/app-data'; // Consolidated import
-import type { UserData } from '@/types/user'; // Import UserData type
+import { readData, writeData } from '@/services/data-storage';
+import type { UserData } from '@/types/user';
+import type { AllUsersData } from '@/types/app-data'; // Correct import path for AllUsersData
 
 
 // Constants for filenames and keys
@@ -36,6 +34,8 @@ export default function Home() {
          try {
            const userSessionData = JSON.parse(storedUserSession);
            setRole(userSessionData.role);
+           // Also set username if needed, though it's less critical for role switching
+           // setUsername(userSessionData.username);
          } catch (e) {
            console.error("Errore durante il parsing dei dati di sessione:", e);
            localStorage.removeItem(LOGGED_IN_USER_KEY); // Clear invalid data
@@ -85,8 +85,7 @@ export default function Home() {
         userApproved = true; // Hardcoded admin is always approved
     } else {
       // Read all users data from the file
-      // Explicitly type allUsers with the correctly imported AllUsersData
-      const allUsers: AllUsersData = await readData<AllUsersData>(USERS_DATA_FILE, {});
+      const allUsers = await readData<AllUsersData>(USERS_DATA_FILE, {});
       const userData: UserData | undefined = allUsers[username]; // Find user by email (username)
 
       if (userData) {
@@ -94,8 +93,7 @@ export default function Home() {
           if (userData.password === password) {
               correctPassword = true;
               userRole = userData.role;
-              // Ensure approved status is checked correctly (true or explicitly true vs false/missing)
-               userApproved = userData.approved === true; // Check for explicit true
+              userApproved = userData.approved === true; // Check for explicit true
           } else {
               correctPassword = false;
           }
@@ -185,4 +183,3 @@ export default function Home() {
     </>
   );
 }
-
