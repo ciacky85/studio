@@ -1,8 +1,6 @@
 
 import type { UserData } from './user';
-import type { BookableSlot } from './schedule'; // Use unified schedule type
-import type { ScheduleAssignment } from './schedule'; // Use unified schedule type
-import type { ScheduleConfiguration } from './schedule-configuration';
+import type { BookableSlot, ScheduleAssignment } from './schedule'; // Use unified schedule type
 
 // Structure for the users.json file
 export interface AllUsersData {
@@ -15,10 +13,13 @@ export interface AllProfessorAvailability {
     [professorIdentifier: string]: BookableSlot[];
 }
 
-// Structure for the schedule.json file (used for current editing)
-export interface ClassroomSchedule {
-    [scheduleKey: string]: ScheduleAssignment; // key: "Day-Time-Classroom"
+// Structure for the weeklySchedule.json file
+// Key: 'YYYY-MM-DD'
+// Value: Object mapping 'HH:MM-Classroom' to ScheduleAssignment
+export interface DailyScheduleAssignments {
+    [timeClassroomKey: string]: ScheduleAssignment;
 }
 
-// Structure for the scheduleConfigurations.json file
-export type AllScheduleConfigurations = ScheduleConfiguration[];
+export interface WeeklyScheduleData {
+    [dateKey: string]: DailyScheduleAssignments;
+}
