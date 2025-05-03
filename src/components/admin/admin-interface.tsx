@@ -1,4 +1,3 @@
-
 'use client';
 
 import {useState, useEffect, useCallback} from 'react';
@@ -167,7 +166,7 @@ export function AdminInterface() {
             name: name,
             role: userData.role,
             email: email,
-            assignedProfessorEmails: userData.assignedProfessorEmail ?? undefined, // Corrected property name here
+            assignedProfessorEmails: userData.assignedProfessorEmail ?? undefined, // Corrected property name
           };
 
           if (userData.approved === true) {
@@ -482,7 +481,7 @@ export function AdminInterface() {
       console.log(`[Admin Guest] Loaded guest availability slots: ${guestAvailability.length}`);
 
       const potentialGuestSlots: string[] = []; // 'HH:MM-Classroom'
-      Object.entries(dayAssignments).forEach(([timeClassroomKey, assignment]) => {
+      await Promise.all(Object.entries(dayAssignments).map(async ([timeClassroomKey, assignment]) => {
         if (assignment.professor === GUEST_IDENTIFIER) {
           const [time, ...classroomParts] = timeClassroomKey.split('-'); // Handle potential hyphens in classroom name
           const classroom = classroomParts.join('-');
@@ -505,7 +504,7 @@ export function AdminInterface() {
              }
           }
         }
-      });
+      }));
 
       potentialGuestSlots.sort((a, b) => {
         const [timeA, ...classroomPartsA] = a.split('-');
@@ -1073,5 +1072,3 @@ export function AdminInterface() {
     </>
   );
 }
-
-    
