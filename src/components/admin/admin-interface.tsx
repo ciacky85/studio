@@ -167,7 +167,7 @@ export function AdminInterface() {
             name: name,
             role: userData.role,
             email: email,
-            assignedProfessorEmail: userData.assignedProfessorEmail ?? undefined,
+            assignedProfessorEmails: userData.assignedProfessorEmails ?? undefined, // Corrected property name here
           };
 
           if (userData.approved === true) {
@@ -250,7 +250,7 @@ export function AdminInterface() {
 
         if (userData && !userData.approved) {
             userData.approved = true;
-            userData.assignedProfessorEmail = userData.assignedProfessorEmail || null;
+            userData.assignedProfessorEmails = userData.assignedProfessorEmails || null;
             allUsers[email] = userData;
             await writeData(USERS_DATA_FILE, allUsers);
 
@@ -435,7 +435,7 @@ export function AdminInterface() {
 
       if (userData) {
         // Filter out the GUEST_IDENTIFIER before saving
-        userData.assignedProfessorEmail = assignedEmails.filter(email => email !== GUEST_IDENTIFIER).length > 0 ? assignedEmails.filter(email => email !== GUEST_IDENTIFIER) : null;
+        userData.assignedProfessorEmails = assignedEmails.filter(email => email !== GUEST_IDENTIFIER).length > 0 ? assignedEmails.filter(email => email !== GUEST_IDENTIFIER) : null;
         allUsers[userEmail] = userData;
         await writeData(USERS_DATA_FILE, allUsers);
         await loadData();
@@ -937,7 +937,7 @@ export function AdminInterface() {
                            <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Ruolo</TableHead><TableHead>Email</TableHead><TableHead>Professori Assegnati</TableHead><TableHead>Azioni</TableHead></TableRow></TableHeader>
                            <TableBody>
                              {approvedUsers.map((user) => {
-                               const displayAssigned = (user.assignedProfessorEmail ?? [])
+                               const displayAssigned = (user.assignedProfessorEmails ?? [])
                                                           .filter(email => email !== GUEST_IDENTIFIER); // Filter out GUEST
                                return (
                                  <TableRow key={`approved-${user.id}`}>
@@ -1064,3 +1064,5 @@ export function AdminInterface() {
     </>
   );
 }
+
+    

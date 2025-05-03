@@ -37,6 +37,30 @@
       "professorEmail": "lkc.marta@gmail.com"
     },
     {
+      "id": "2025-05-10-19:00-Aula 1 Grande-lkc.marta@gmail.com",
+      "date": "2025-05-10",
+      "day": "sabato",
+      "time": "19:00",
+      "classroom": "Aula 1 Grande",
+      "duration": 60,
+      "isAvailable": false,
+      "bookedBy": "carlo.checchi.spam@gmail.com",
+      "bookingTime": "2025-05-03T08:38:11.603Z",
+      "professorEmail": "lkc.marta@gmail.com"
+    },
+    {
+      "id": "2025-05-10-20:00-Aula 2 Piccola-lkc.marta@gmail.com",
+      "date": "2025-05-10",
+      "day": "sabato",
+      "time": "20:00",
+      "classroom": "Aula 2 Piccola",
+      "duration": 60,
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
+      "professorEmail": "lkc.marta@gmail.com"
+    },
+    {
       "id": "2025-05-19-10:00-Aula 1 Grande-lkc.marta@gmail.com",
       "date": "2025-05-19",
       "day": "Lunedì",
@@ -69,9 +93,9 @@
       "time": "13:00",
       "classroom": "Aula 1 Grande",
       "duration": 60,
-      "isAvailable": false,
-      "bookedBy": "Ospite: Ospite Test 1",
-      "bookingTime": "2025-05-01T21:17:08.608Z",
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
       "professorEmail": "GUEST"
     },
     {
@@ -81,9 +105,9 @@
       "time": "13:00",
       "classroom": "Aula 1 Grande",
       "duration": 60,
-      "isAvailable": false,
-      "bookedBy": "Ospite: Anna",
-      "bookingTime": "2025-05-01T21:21:11.392Z",
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
       "professorEmail": "GUEST"
     },
     {
@@ -93,9 +117,9 @@
       "time": "14:00",
       "classroom": "Aula 1 Grande",
       "duration": 60,
-      "isAvailable": false,
-      "bookedBy": "Ospite: Ospite test 2",
-      "bookingTime": "2025-05-01T21:17:20.689Z",
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
       "professorEmail": "GUEST"
     },
     {
@@ -117,9 +141,9 @@
       "time": "15:00",
       "classroom": "Aula 1 Grande",
       "duration": 60,
-      "isAvailable": false,
-      "bookedBy": "Ospite: Carletto 8 Maggio H15 1Grande",
-      "bookingTime": "2025-05-03T08:30:55.383Z",
+      "isAvailable": true,
+      "bookedBy": null,
+      "bookingTime": null,
       "professorEmail": "GUEST"
     }
   ]

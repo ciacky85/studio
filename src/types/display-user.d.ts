@@ -5,5 +5,7 @@ export interface DisplayUser {
   name: string;
   role: 'student' | 'professor' | 'admin'; // Explicitly include admin role
   email: string;
-  assignedProfessorEmails?: string[] | null; // Array of emails or null
+  assignedProfessorEmails?: string[] | null; // Corrected property name (plural)
 }
+
+    
