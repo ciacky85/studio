@@ -167,7 +167,7 @@ export function AdminInterface() {
             name: name,
             role: userData.role,
             email: email,
-            assignedProfessorEmails: userData.assignedProfessorEmails ?? undefined, // Corrected property name here
+            assignedProfessorEmails: userData.assignedProfessorEmail ?? undefined, // Corrected property name here
           };
 
           if (userData.approved === true) {
@@ -250,7 +250,7 @@ export function AdminInterface() {
 
         if (userData && !userData.approved) {
             userData.approved = true;
-            userData.assignedProfessorEmails = userData.assignedProfessorEmails || null;
+            userData.assignedProfessorEmail = userData.assignedProfessorEmail || null; // Use singular here
             allUsers[email] = userData;
             await writeData(USERS_DATA_FILE, allUsers);
 
@@ -435,7 +435,7 @@ export function AdminInterface() {
 
       if (userData) {
         // Filter out the GUEST_IDENTIFIER before saving
-        userData.assignedProfessorEmails = assignedEmails.filter(email => email !== GUEST_IDENTIFIER).length > 0 ? assignedEmails.filter(email => email !== GUEST_IDENTIFIER) : null;
+        userData.assignedProfessorEmail = assignedEmails.filter(email => email !== GUEST_IDENTIFIER).length > 0 ? assignedEmails.filter(email => email !== GUEST_IDENTIFIER) : null; // Use singular here
         allUsers[userEmail] = userData;
         await writeData(USERS_DATA_FILE, allUsers);
         await loadData();
@@ -501,7 +501,7 @@ export function AdminInterface() {
                 }
              } catch (e) {
                  console.warn(`[Admin Guest] Error parsing date/time for ${slotId}`, e);
-                 logError(e, `Admin Load Guest Slots Parse (${slotId})`);
+                 await logError(e, `Admin Load Guest Slots Parse (${slotId})`);
              }
           }
         }
@@ -559,6 +559,14 @@ export function AdminInterface() {
       if (existingBooking) {
         throw new Error('Questo slot è stato appena prenotato.');
       }
+
+      // Check if the slot exists in the weekly schedule for the GUEST on this date
+       const dayAssignments = weeklyScheduleData[formattedDate] || {};
+       const timeClassroomKey = `${time}-${classroom}`;
+       if (dayAssignments[timeClassroomKey]?.professor !== GUEST_IDENTIFIER) {
+           throw new Error("Questo slot non è più disponibile per gli ospiti in questa data.");
+       }
+
 
       const newBooking: BookableSlot = {
         id: slotId, date: formattedDate, day: dayOfWeekString, time: time, classroom: classroom, duration: 60,
@@ -937,8 +945,9 @@ export function AdminInterface() {
                            <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Ruolo</TableHead><TableHead>Email</TableHead><TableHead>Professori Assegnati</TableHead><TableHead>Azioni</TableHead></TableRow></TableHeader>
                            <TableBody>
                              {approvedUsers.map((user) => {
+                               // Filter GUEST_IDENTIFIER before displaying
                                const displayAssigned = (user.assignedProfessorEmails ?? [])
-                                                          .filter(email => email !== GUEST_IDENTIFIER); // Filter out GUEST
+                                                         .filter(email => email !== GUEST_IDENTIFIER);
                                return (
                                  <TableRow key={`approved-${user.id}`}>
                                    <TableCell>{user.name}</TableCell>
@@ -952,7 +961,7 @@ export function AdminInterface() {
                                    </TableCell>
                                  </TableRow>
                                );
-                              })}
+                             })}
                            </TableBody>
                          </Table>
                        ) : ( <p>Nessun utente approvato trovato.</p> )}
@@ -1056,7 +1065,7 @@ export function AdminInterface() {
           isOpen={isManageProfessorsDialogOpen}
           onClose={() => { setIsManageProfessorsDialogOpen(false); setSelectedUserForProfessorManagement(null); }}
           user={selectedUserForProfessorManagement}
-          allProfessors={professors}
+          allProfessors={professors} // Pass the filtered list without GUEST
           onSave={handleSaveUserProfessors}
           isLoading={isLoading}
         />
