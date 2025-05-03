@@ -1,4 +1,3 @@
-
 'use client';
 
 import {useState, useEffect} from 'react';
@@ -39,11 +38,11 @@ export function ManageUserProfessorsDialog({
     useEffect(() => {
         // Initialize selected professors based on the user's current assignments
         // Filter out the user's own email if they are a professor during initialization
-        if (user && Array.isArray(user.assignedProfessorEmail)) {
+        if (user && Array.isArray(user.assignedProfessorEmails)) { // Corrected property name
             setSelectedProfessors(
                 user.role === 'professor'
-                    ? user.assignedProfessorEmail.filter(email => email !== user.email)
-                    : user.assignedProfessorEmail
+                    ? user.assignedProfessorEmails.filter(email => email !== user.email) // Corrected property name
+                    : user.assignedProfessorEmails // Corrected property name
             );
         } else {
             setSelectedProfessors([]);
