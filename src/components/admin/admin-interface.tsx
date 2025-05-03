@@ -53,6 +53,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Import AlertDialogTrigger
 } from '@/components/ui/alert-dialog';
 import {logError} from '@/services/logging';
 import { ChevronLeft, ChevronRight } from 'lucide-react'; // Icons for week navigation
@@ -94,15 +95,16 @@ const guestColor = 'bg-green-400 dark:bg-green-700';
 
 // Function to get a color class based on professor email
 const getProfessorColor = (
-  professorEmail: string | undefined | null,
+  professorIdentifier: string | undefined | null,
   allProfessors: string[]
 ): string => {
-  if (professorEmail === GUEST_IDENTIFIER) {
+  if (!professorIdentifier) return ''; // Handle undefined/null case early
+  if (professorIdentifier === GUEST_IDENTIFIER) {
       return guestColor;
   }
-  const index = allProfessors.indexOf(professorEmail || '');
-  if (index === -1 || !professorEmail) {
-    return '';
+  const index = allProfessors.indexOf(professorIdentifier);
+  if (index === -1) {
+    return ''; // No color if professor not found
   }
   return professorColors[index % professorColors.length];
 };
@@ -113,7 +115,6 @@ export function AdminInterface() {
   const [approvedUsers, setApprovedUsers] = useState<DisplayUser[]>([]);
   const [professors, setProfessors] = useState<string[]>([]);
   const [weeklyScheduleData, setWeeklyScheduleData] = useState<WeeklyScheduleData>({});
-  // REMOVED: const [currentWeekAssignments, setCurrentWeekAssignments] = useState<WeeklyScheduleData>({});
   const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]);
   const [isManageProfessorsDialogOpen, setIsManageProfessorsDialogOpen] = useState(false);
   const [selectedUserForProfessorManagement, setSelectedUserForProfessorManagement] = useState<DisplayUser | null>(null);
@@ -125,6 +126,7 @@ export function AdminInterface() {
   const [guestName, setGuestName] = useState('');
   const [isBookingGuest, setIsBookingGuest] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [isCopyWeekDialogOpen, setIsCopyWeekDialogOpen] = useState(false); // State for copy dialog
 
   const {toast} = useToast();
 
@@ -143,8 +145,6 @@ export function AdminInterface() {
 
   // Generate the days for the current week header
   const weekDates = Array.from({ length: 7 }).map((_, i) => addDays(currentWeekStart, i));
-
-  // REMOVED: useEffect and useCallback for updateCurrentWeekAssignments
 
   // Load ALL data from files
   const loadData = useCallback(async () => {
@@ -200,7 +200,7 @@ export function AdminInterface() {
                 slot.time &&
                 slot.classroom &&
                 slot.bookedBy &&
-                slot.professorEmail &&
+                slot.professorEmail && // Ensure professorEmail exists
                 slot.duration === 60
               ) {
                 loadedAllBooked.push(slot);
@@ -379,6 +379,40 @@ export function AdminInterface() {
       setIsSavingSchedule(false);
     }
   };
+
+  // Function to copy assignments from the previous week
+  const copyPreviousWeekSchedule = useCallback(async () => {
+     const previousWeekStart = subWeeks(currentWeekStart, 1);
+     const currentWeekDates = weekDates.map(date => format(date, 'yyyy-MM-dd'));
+     const previousWeekDates = Array.from({ length: 7 }).map((_, i) => format(addDays(previousWeekStart, i), 'yyyy-MM-dd'));
+
+     // Create a copy of the current state to modify
+     let updatedScheduleData = { ...weeklyScheduleData };
+     let copied = false;
+
+     previousWeekDates.forEach((prevDateKey, index) => {
+         const currentDateKey = currentWeekDates[index];
+         const prevDayAssignments = weeklyScheduleData[prevDateKey];
+
+         if (prevDayAssignments) {
+             console.log(`[Admin Copy Week] Found assignments for previous date ${prevDateKey}, copying to ${currentDateKey}`);
+             updatedScheduleData[currentDateKey] = { ...(prevDayAssignments || {}) }; // Copy assignments
+             copied = true;
+         } else {
+             console.log(`[Admin Copy Week] No assignments found for previous date ${prevDateKey}. Clearing assignments for ${currentDateKey}.`);
+             // If no previous data, clear the current day's data (or leave as is if you prefer)
+             delete updatedScheduleData[currentDateKey];
+         }
+     });
+
+     if (copied) {
+        setWeeklyScheduleData(updatedScheduleData);
+        toast({ title: 'Orario Copiato', description: 'La configurazione della settimana precedente è stata copiata. Ricorda di salvare le modifiche.' });
+     } else {
+        toast({ title: 'Nessun Orario da Copiare', description: 'Nessuna configurazione trovata per la settimana precedente.', variant: 'default' });
+     }
+  }, [currentWeekStart, weeklyScheduleData, weekDates, toast]);
+
 
   // Functions for week navigation
   const goToPreviousWeek = () => {
@@ -572,7 +606,7 @@ export function AdminInterface() {
                     <CardDescription>Assegna professori o ospiti agli slot per la settimana selezionata.</CardDescription>
                     <div className="flex justify-between items-center pt-4">
                        <Button onClick={goToPreviousWeek} disabled={isLoading || isSavingSchedule} variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
-                       <span className="text-lg font-semibold">
+                       <span className="text-lg font-semibold text-center">
                            Settimana del {format(currentWeekStart, 'dd MMM yyyy', { locale: it })} - {format(addDays(currentWeekStart, 6), 'dd MMM yyyy', { locale: it })}
                        </span>
                        <Button onClick={goToNextWeek} disabled={isLoading || isSavingSchedule} variant="outline" size="icon"><ChevronRight className="h-4 w-4" /></Button>
@@ -644,10 +678,33 @@ export function AdminInterface() {
                         </TableBody>
                       </Table>
                     </div>
-                    <div className="flex justify-end pt-4">
-                      <Button onClick={saveWeeklySchedule} disabled={isLoading || isSavingSchedule}>
-                        {isSavingSchedule ? 'Salvataggio Orario...' : 'Salva Modifiche Settimana'}
-                      </Button>
+                    <div className="flex justify-end items-center pt-4 space-x-2">
+                       {/* Copy Previous Week Button & Dialog */}
+                       <AlertDialog open={isCopyWeekDialogOpen} onOpenChange={setIsCopyWeekDialogOpen}>
+                          <AlertDialogTrigger asChild>
+                             <Button variant="outline" disabled={isLoading || isSavingSchedule}>
+                                Copia da Settimana Precedente
+                             </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                             <AlertDialogHeader>
+                                <AlertDialogTitle>Conferma Copia Orario</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                   Vuoi compilare la settimana visualizzata con le stesse informazioni della settimana precedente?
+                                   Eventuali assegnazioni esistenti per questa settimana verranno sovrascritte.
+                                </AlertDialogDescription>
+                             </AlertDialogHeader>
+                             <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => toast({ title: 'Operazione Annullata', variant: 'default' })}>Annulla</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => { copyPreviousWeekSchedule(); setIsCopyWeekDialogOpen(false); }}>Sì, Copia</AlertDialogAction>
+                             </AlertDialogFooter>
+                          </AlertDialogContent>
+                       </AlertDialog>
+
+                       {/* Save Button */}
+                       <Button onClick={saveWeeklySchedule} disabled={isLoading || isSavingSchedule}>
+                           {isSavingSchedule ? 'Salvataggio Orario...' : 'Salva Modifiche Settimana'}
+                       </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -810,16 +867,39 @@ export function AdminInterface() {
                          <Table>
                            <TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Ora</TableHead><TableHead>Aula</TableHead><TableHead>Professore</TableHead><TableHead>Studente/Prof./Ospite</TableHead><TableHead>Ora Prenotazione</TableHead></TableRow></TableHeader>
                            <TableBody>
-                             {allBookedSlots.map((slot) => (
-                               <TableRow key={`booked-${slot.id}`}>
-                                 <TableCell>{slot.date && isValid(parseISO(slot.date)) ? format(parseISO(slot.date), 'dd/MM/yyyy', { locale: it }) : 'Data non valida'}</TableCell>
-                                 <TableCell>{slot.time}</TableCell>
-                                 <TableCell>{slot.classroom}</TableCell>
-                                 <TableCell>{slot.professorEmail === GUEST_IDENTIFIER ? 'Ospite' : slot.professorEmail}</TableCell>
-                                 <TableCell>{slot.bookedBy}</TableCell>
-                                 <TableCell>{slot.bookingTime && isValid(parseISO(slot.bookingTime)) ? format(parseISO(slot.bookingTime), 'dd/MM/yyyy HH:mm', { locale: it }) : 'N/A'}</TableCell>
-                               </TableRow>
-                             ))}
+                             {allBookedSlots.map((slot) => {
+                                 if (!slot || !slot.id || !slot.date || !slot.time || !slot.bookedBy) return null; // Skip invalid slots
+
+                                 let formattedDate = 'Data non valida';
+                                 let formattedBookingTime = 'N/A';
+                                 try {
+                                     const parsedDate = parseISO(slot.date);
+                                     if (isValid(parsedDate)) {
+                                         formattedDate = format(parsedDate, 'dd/MM/yyyy', { locale: it });
+                                     }
+                                 } catch (e) { console.warn(`Invalid date format for slot ${slot.id}: ${slot.date}`); }
+
+                                 try {
+                                     if (slot.bookingTime) {
+                                         const parsedBookingTime = parseISO(slot.bookingTime);
+                                         if (isValid(parsedBookingTime)) {
+                                             formattedBookingTime = format(parsedBookingTime, 'dd/MM/yyyy HH:mm', { locale: it });
+                                         }
+                                     }
+                                 } catch (e) { console.warn(`Invalid booking time format for slot ${slot.id}: ${slot.bookingTime}`); }
+
+
+                                 return (
+                                     <TableRow key={`booked-${slot.id}`}>
+                                         <TableCell>{formattedDate}</TableCell>
+                                         <TableCell>{slot.time}</TableCell>
+                                         <TableCell>{slot.classroom}</TableCell>
+                                         <TableCell>{slot.professorEmail === GUEST_IDENTIFIER ? 'Ospite' : slot.professorEmail}</TableCell>
+                                         <TableCell>{slot.bookedBy}</TableCell>
+                                         <TableCell>{formattedBookingTime}</TableCell>
+                                     </TableRow>
+                                 );
+                             })}
                            </TableBody>
                          </Table>
                        ) : ( <p>Nessuna lezione prenotata al momento.</p> )}
@@ -846,4 +926,3 @@ export function AdminInterface() {
     </>
   );
 }
-
