@@ -28,9 +28,8 @@ import {
 } from '@/components/ui/table';
 import {sendEmail} from '@/services/email';
 import {useToast} from "@/hooks/use-toast";
-import type {UserData} from '@/types/user';
 import {Separator} from '@/components/ui/separator';
-import { format, parseISO, getDay, startOfWeek, addDays, subWeeks, addWeeks, isValid } from 'date-fns'; // Added date-fns functions for week handling
+import { format, parseISO, getDay, startOfWeek, addDays, subWeeks, addWeeks, isValid, isBefore, startOfDay } from 'date-fns'; // Added date-fns functions for week handling
 import {ManageUserProfessorsDialog} from './manage-user-professors-dialog';
 import {cn} from '@/lib/utils';
 import type {DisplayUser} from '@/types/display-user';
@@ -113,22 +112,19 @@ export function AdminInterface() {
   const [pendingRegistrations, setPendingRegistrations] = useState<DisplayUser[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<DisplayUser[]>([]);
   const [professors, setProfessors] = useState<string[]>([]);
-  // State for the entire persistent weekly schedule data
   const [weeklyScheduleData, setWeeklyScheduleData] = useState<WeeklyScheduleData>({});
-  // State for the assignments of the *currently displayed* week
-  const [currentWeekAssignments, setCurrentWeekAssignments] = useState<WeeklyScheduleData>({});
+  // REMOVED: const [currentWeekAssignments, setCurrentWeekAssignments] = useState<WeeklyScheduleData>({});
   const [allBookedSlots, setAllBookedSlots] = useState<BookableSlot[]>([]);
   const [isManageProfessorsDialogOpen, setIsManageProfessorsDialogOpen] = useState(false);
   const [selectedUserForProfessorManagement, setSelectedUserForProfessorManagement] = useState<DisplayUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSavingSchedule, setIsSavingSchedule] = useState(false); // State for saving weekly schedule
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [guestBookingDate, setGuestBookingDate] = useState<Date | undefined>(new Date());
   const [availableGuestSlots, setAvailableGuestSlots] = useState<string[]>([]);
   const [selectedGuestSlot, setSelectedGuestSlot] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
   const [isBookingGuest, setIsBookingGuest] = useState(false);
-  // State for the start date of the currently displayed week
-  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 })); // Start week on Monday
+  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
   const {toast} = useToast();
 
@@ -148,25 +144,7 @@ export function AdminInterface() {
   // Generate the days for the current week header
   const weekDates = Array.from({ length: 7 }).map((_, i) => addDays(currentWeekStart, i));
 
-  // Function to get assignments for the currently displayed week
-  const updateCurrentWeekAssignments = useCallback(() => {
-    const weekData: WeeklyScheduleData = {};
-    weekDates.forEach(date => {
-      const dateKey = format(date, 'yyyy-MM-dd');
-      if (weeklyScheduleData[dateKey]) {
-        weekData[dateKey] = weeklyScheduleData[dateKey];
-      } else {
-        weekData[dateKey] = {}; // Ensure day exists even if no assignments yet
-      }
-    });
-    setCurrentWeekAssignments(weekData);
-  }, [currentWeekStart, weeklyScheduleData, weekDates]); // Recalculate when week or main data changes
-
-  // Update displayed week assignments when week changes or data loads
-  useEffect(() => {
-    updateCurrentWeekAssignments();
-  }, [updateCurrentWeekAssignments]);
-
+  // REMOVED: useEffect and useCallback for updateCurrentWeekAssignments
 
   // Load ALL data from files
   const loadData = useCallback(async () => {
@@ -187,7 +165,7 @@ export function AdminInterface() {
             name: name,
             role: userData.role,
             email: email,
-            assignedProfessorEmails: userData.assignedProfessorEmail ?? undefined,
+            assignedProfessorEmail: userData.assignedProfessorEmail ?? undefined,
           };
 
           if (userData.approved === true) {
@@ -235,7 +213,6 @@ export function AdminInterface() {
       // Load Weekly Schedule Data
       const loadedWeeklySchedule = await readData<WeeklyScheduleData>(WEEKLY_SCHEDULE_DATA_FILE, {});
       setWeeklyScheduleData(loadedWeeklySchedule);
-      // Initial update of the displayed week's assignments will happen via useEffect dependency change
 
     } catch (error) {
       console.error('Errore durante il caricamento dei dati:', error);
@@ -261,9 +238,7 @@ export function AdminInterface() {
     loadData();
   }, [loadData]);
 
-  // --- User Management Functions (Approve/Reject/Assign Professors) ---
-  // These functions remain largely the same, ensuring they update USERS_DATA_FILE
-
+  // --- User Management Functions ---
   const approveRegistration = async (email: string) => {
     setIsLoading(true);
     try {
@@ -363,7 +338,7 @@ export function AdminInterface() {
      }
    };
 
-  // Function to handle assignment change for a specific cell in the *current week*
+  // --- Schedule Management ---
   const handleAssignmentChange = (
     dateKey: string, // 'YYYY-MM-DD'
     time: string, // 'HH:MM'
@@ -375,14 +350,7 @@ export function AdminInterface() {
       professor: professorIdentifier === 'unassigned' ? '' : professorIdentifier,
     };
 
-    // Update the local state for the current week first (optimistic update)
-    setCurrentWeekAssignments(prev => {
-      const updatedDayAssignments = { ...(prev[dateKey] || {}) };
-      updatedDayAssignments[timeClassroomKey] = newAssignment;
-      return { ...prev, [dateKey]: updatedDayAssignments };
-    });
-
-    // Update the main weeklyScheduleData state (this will be saved)
+    // Update the main weeklyScheduleData state directly
     setWeeklyScheduleData(prev => {
       const updatedDayAssignments = { ...(prev[dateKey] || {}) };
       updatedDayAssignments[timeClassroomKey] = newAssignment;
@@ -421,7 +389,7 @@ export function AdminInterface() {
     setCurrentWeekStart(prev => addWeeks(prev, 1));
   };
 
-  // User-Professor Assignment (remains the same)
+  // --- User-Professor Assignment ---
   const handleSaveUserProfessors = async (userEmail: string, assignedEmails: string[]) => {
     setIsLoading(true);
     try {
@@ -458,7 +426,7 @@ export function AdminInterface() {
     setIsManageProfessorsDialogOpen(true);
   };
 
-  // Guest Booking Logic (remains largely the same, but reads from weeklyScheduleData)
+  // --- Guest Booking ---
  const loadAvailableGuestSlots = useCallback(async () => {
     if (!guestBookingDate || !isValid(guestBookingDate)) {
       setAvailableGuestSlots([]);
@@ -478,24 +446,40 @@ export function AdminInterface() {
       const potentialGuestSlots: string[] = []; // 'HH:MM-Classroom'
       Object.entries(dayAssignments).forEach(([timeClassroomKey, assignment]) => {
         if (assignment.professor === GUEST_IDENTIFIER) {
-          const [time, classroom] = timeClassroomKey.split('-');
+          const [time, ...classroomParts] = timeClassroomKey.split('-'); // Handle potential hyphens in classroom name
+          const classroom = classroomParts.join('-');
           const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_IDENTIFIER}`;
-          const isBooked = guestAvailability.some(slot => slot?.id === slotId && slot.bookedBy);
+          // Find if the slot exists in guestAvailability AND is booked
+           const isBooked = guestAvailability.some(slot => slot?.id === slotId && slot.bookedBy);
+          console.log(`[Admin Guest] Checking slot ${slotId}, booked: ${isBooked}`);
           if (!isBooked) {
-            potentialGuestSlots.push(timeClassroomKey);
+             // Check if the slot is in the future
+             try {
+                const slotDateTime = parseISO(`${formattedDate}T${time}:00`);
+                if (isValid(slotDateTime) && !isBefore(slotDateTime, startOfDay(new Date()))) {
+                     potentialGuestSlots.push(timeClassroomKey);
+                } else {
+                    console.log(`[Admin Guest] Slot ${slotId} is in the past or invalid, excluding.`);
+                }
+             } catch (e) {
+                 console.warn(`[Admin Guest] Error parsing date/time for ${slotId}`, e);
+                 logError(e, `Admin Load Guest Slots Parse (${slotId})`);
+             }
           }
         }
       });
 
       potentialGuestSlots.sort((a, b) => {
-        const [timeA, classroomA] = a.split('-');
-        const [timeB, classroomB] = b.split('-');
+        const [timeA, ...classroomPartsA] = a.split('-');
+        const classroomA = classroomPartsA.join('-');
+        const [timeB, ...classroomPartsB] = b.split('-');
+        const classroomB = classroomPartsB.join('-');
         const timeCompare = timeA.localeCompare(timeB);
         if (timeCompare !== 0) return timeCompare;
         return classroomA.localeCompare(classroomB);
       });
 
-      console.log(`[Admin Guest] Final available (unbooked) guest slots for ${formattedDate}:`, potentialGuestSlots);
+      console.log(`[Admin Guest] Final available (unbooked, future) guest slots for ${formattedDate}:`, potentialGuestSlots);
       setAvailableGuestSlots(potentialGuestSlots);
     } catch (error: any) {
       console.error('Errore caricamento slot ospite:', error);
@@ -508,7 +492,7 @@ export function AdminInterface() {
       });
       setAvailableGuestSlots([]);
     }
-  }, [guestBookingDate, weeklyScheduleData, toast]); // Depend on weeklyScheduleData
+  }, [guestBookingDate, weeklyScheduleData, toast]);
 
   // Load guest slots when the date changes or weekly schedule updates
   useEffect(() => {
@@ -523,9 +507,9 @@ export function AdminInterface() {
 
     setIsBookingGuest(true);
     try {
-      const [time, classroom] = selectedGuestSlot.split('-');
+      const [time, ...classroomParts] = selectedGuestSlot.split('-');
+      const classroom = classroomParts.join('-');
       const formattedDate = format(guestBookingDate, 'yyyy-MM-dd');
-      const dayOfWeekIndex = getDay(guestBookingDate);
       const dayOfWeekString = format(guestBookingDate, 'EEEE', { locale: it }); // Get Italian day name
       const slotId = `${formattedDate}-${time}-${classroom}-${GUEST_IDENTIFIER}`;
 
@@ -540,7 +524,7 @@ export function AdminInterface() {
 
       const newBooking: BookableSlot = {
         id: slotId, date: formattedDate, day: dayOfWeekString, time: time, classroom: classroom, duration: 60,
-        isAvailable: false, // Guest slots are implicitly available if not booked
+        isAvailable: false, // Guest slots availability is implicit
         bookedBy: `Ospite: ${guestName.trim()}`, bookingTime: new Date().toISOString(), professorEmail: GUEST_IDENTIFIER,
       };
 
@@ -623,7 +607,8 @@ export function AdminInterface() {
                               <TableCell className="font-medium sticky left-0 bg-card z-10">{time}</TableCell>
                               {weekDates.map((date) => {
                                 const dateKey = format(date, 'yyyy-MM-dd');
-                                const dayAssignments = currentWeekAssignments[dateKey] || {}; // Get assignments for this specific date
+                                // Get assignments directly from weeklyScheduleData for the current view
+                                const dayAssignments = weeklyScheduleData[dateKey] || {};
                                 return classrooms.map((classroom) => {
                                   const timeClassroomKey = `${time}-${classroom}`;
                                   const assignment = dayAssignments[timeClassroomKey];
@@ -668,7 +653,7 @@ export function AdminInterface() {
                 </Card>
               </TabsContent>
 
-              {/* Tab: Prenotazione Singola (Guest Booking) - Remains the same */}
+              {/* Tab: Prenotazione Singola (Guest Booking) */}
               <TabsContent value="guest-booking">
                 <Card>
                   <CardHeader>
@@ -686,7 +671,7 @@ export function AdminInterface() {
                         onSelect={setGuestBookingDate}
                         className="rounded-md border"
                         locale={it}
-                        disabled={(date) => !date || isBefore(addDays(date, 1), new Date()) || isLoading} // Disable past dates
+                        disabled={(date) => !date || isBefore(date, startOfDay(new Date())) || isLoading} // Disable past dates
                       />
                     </div>
                     <div className="space-y-4">
@@ -702,8 +687,8 @@ export function AdminInterface() {
                         <p className="text-muted-foreground">Seleziona una data valida dal calendario.</p>
                         ) : availableGuestSlots.length === 0 ? (
                         <p className="text-muted-foreground">
-                          Nessuno slot 'Ospite' disponibile per questa data
-                          secondo l'orario settimanale, oppure sono già prenotati.
+                          Nessuno slot 'Ospite' disponibile o non prenotato per questa data
+                          secondo l'orario settimanale.
                         </p>
                       ) : (
                         <Select
@@ -715,11 +700,15 @@ export function AdminInterface() {
                             <SelectValue placeholder="Seleziona uno slot" />
                           </SelectTrigger>
                           <SelectContent>
-                            {availableGuestSlots.map((slotKey) => (
-                              <SelectItem key={slotKey} value={slotKey}>
-                                {`${slotKey.split('-')[0]} - ${slotKey.split('-')[1]}`}
-                              </SelectItem>
-                            ))}
+                            {availableGuestSlots.map((slotKey) => {
+                               const [time, ...classroomParts] = slotKey.split('-');
+                               const classroom = classroomParts.join('-');
+                               return (
+                                <SelectItem key={slotKey} value={slotKey}>
+                                    {`${time} - ${classroom}`}
+                                </SelectItem>
+                               )
+                            })}
                           </SelectContent>
                         </Select>
                       )}
@@ -747,7 +736,7 @@ export function AdminInterface() {
                 </Card>
               </TabsContent>
 
-              {/* Tab: Users - Remains the same */}
+              {/* Tab: Users */}
                <TabsContent value="users">
                  <Card>
                    <CardHeader>
@@ -794,7 +783,7 @@ export function AdminInterface() {
                                  <TableCell>{user.name}</TableCell>
                                  <TableCell>{user.role.charAt(0).toUpperCase() + user.role.slice(1)}</TableCell>
                                  <TableCell>{user.email}</TableCell>
-                                 <TableCell>{(user.assignedProfessorEmails && user.assignedProfessorEmails.length > 0) ? user.assignedProfessorEmails.join(', ') : 'Nessuno'}</TableCell>
+                                 <TableCell>{(user.assignedProfessorEmail && user.assignedProfessorEmail.length > 0) ? user.assignedProfessorEmail.join(', ') : 'Nessuno'}</TableCell>
                                  <TableCell>
                                    <Button onClick={() => openManageProfessorsDialog(user)} size="sm" variant="outline" disabled={isLoading}>Gestisci Professori</Button>
                                  </TableCell>
@@ -808,7 +797,7 @@ export function AdminInterface() {
                  </Card>
                </TabsContent>
 
-              {/* Tab: Bookings - Remains the same */}
+              {/* Tab: Bookings */}
                <TabsContent value="bookings">
                  <Card>
                    <CardHeader>
@@ -857,3 +846,4 @@ export function AdminInterface() {
     </>
   );
 }
+
