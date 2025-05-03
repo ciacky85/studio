@@ -431,7 +431,8 @@ export function AdminInterface() {
       const userData = allUsers[userEmail];
 
       if (userData) {
-        userData.assignedProfessorEmail = assignedEmails.length > 0 ? assignedEmails : null;
+        // Filter out the GUEST_IDENTIFIER before saving
+        userData.assignedProfessorEmail = assignedEmails.filter(email => email !== GUEST_IDENTIFIER).length > 0 ? assignedEmails.filter(email => email !== GUEST_IDENTIFIER) : null;
         allUsers[userEmail] = userData;
         await writeData(USERS_DATA_FILE, allUsers);
         await loadData();
@@ -835,17 +836,23 @@ export function AdminInterface() {
                          <Table>
                            <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Ruolo</TableHead><TableHead>Email</TableHead><TableHead>Professori Assegnati</TableHead><TableHead>Azioni</TableHead></TableRow></TableHeader>
                            <TableBody>
-                             {approvedUsers.map((user) => (
-                               <TableRow key={`approved-${user.id}`}>
-                                 <TableCell>{user.name}</TableCell>
-                                 <TableCell>{user.role.charAt(0).toUpperCase() + user.role.slice(1)}</TableCell>
-                                 <TableCell>{user.email}</TableCell>
-                                 <TableCell>{(user.assignedProfessorEmail && user.assignedProfessorEmail.length > 0) ? user.assignedProfessorEmail.join(', ') : 'Nessuno'}</TableCell>
-                                 <TableCell>
-                                   <Button onClick={() => openManageProfessorsDialog(user)} size="sm" variant="outline" disabled={isLoading}>Gestisci Professori</Button>
-                                 </TableCell>
-                               </TableRow>
-                             ))}
+                             {approvedUsers.map((user) => {
+                               const displayAssigned = (user.assignedProfessorEmail ?? [])
+                                                          .filter(email => email !== GUEST_IDENTIFIER); // Filter out GUEST
+                               return (
+                                 <TableRow key={`approved-${user.id}`}>
+                                   <TableCell>{user.name}</TableCell>
+                                   <TableCell>{user.role.charAt(0).toUpperCase() + user.role.slice(1)}</TableCell>
+                                   <TableCell>{user.email}</TableCell>
+                                   <TableCell>
+                                     {displayAssigned.length > 0 ? displayAssigned.join(', ') : 'Nessuno'}
+                                   </TableCell>
+                                   <TableCell>
+                                     <Button onClick={() => openManageProfessorsDialog(user)} size="sm" variant="outline" disabled={isLoading}>Gestisci Professori</Button>
+                                   </TableCell>
+                                 </TableRow>
+                               );
+                              })}
                            </TableBody>
                          </Table>
                        ) : ( <p>Nessun utente approvato trovato.</p> )}
@@ -926,3 +933,4 @@ export function AdminInterface() {
     </>
   );
 }
+

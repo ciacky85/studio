@@ -38,27 +38,41 @@ export function ManageUserProfessorsDialog({
 
     useEffect(() => {
         // Initialize selected professors based on the user's current assignments
-        // Keep the existing logic for initialization
-        if (user && Array.isArray(user.assignedProfessorEmails)) {
-             setSelectedProfessors(user.assignedProfessorEmails); // Always initialize with the current list
+        // Filter out the user's own email if they are a professor during initialization
+        if (user && Array.isArray(user.assignedProfessorEmail)) {
+            setSelectedProfessors(
+                user.role === 'professor'
+                    ? user.assignedProfessorEmail.filter(email => email !== user.email)
+                    : user.assignedProfessorEmail
+            );
         } else {
             setSelectedProfessors([]);
         }
     }, [user, isOpen]);
 
     const handleCheckboxChange = (professorEmail: string, checked: boolean) => {
-        // Allow selecting/deselecting any professor from the list
+        // Prevent selecting the user's own email if they are a professor
+        if (user?.role === 'professor' && professorEmail === user.email) {
+            return; // Do nothing if trying to select self
+        }
         setSelectedProfessors(prev => checked ? [...prev, professorEmail] : prev.filter(email => email !== professorEmail));
     };
 
     const handleSaveChanges = () => {
         if (user && !isLoading) { // Prevent saving if already loading
-            onSave(user.email, selectedProfessors);
+             // Filter out the user's own email before saving if they are a professor
+            const emailsToSave = user.role === 'professor'
+                ? selectedProfessors.filter(email => email !== user.email)
+                : selectedProfessors;
+            onSave(user.email, emailsToSave);
         }
     };
 
-    // Use the full list of professors, no longer filtering out the current user if they are a professor
-    const assignableProfessors = allProfessors;
+    // Filter out the current user from the list if they are a professor
+    const assignableProfessors = user?.role === 'professor'
+        ? allProfessors.filter(profEmail => profEmail !== user.email)
+        : allProfessors;
+
 
     if (!user || user.role === 'admin') return null;
 
@@ -68,7 +82,7 @@ export function ManageUserProfessorsDialog({
                 <DialogHeader>
                     <DialogTitle>Gestisci Professori per {user.email} ({user.role === 'student' ? 'Studente' : 'Professore'})</DialogTitle>
                     <DialogDescription>
-                        Seleziona i professori {user.role === 'student' ? 'da cui questo studente può prenotare lezioni' : 'che questo professore può prenotare o da cui può essere prenotato'}.
+                        Seleziona i professori {user.role === 'student' ? 'da cui questo studente può prenotare lezioni' : 'che questo professore può prenotare o da cui può essere prenotato (escluso sé stesso)'}.
                     </DialogDescription>
                 </DialogHeader>
                 <ScrollArea className="h-72 w-full rounded-md border p-4">
@@ -91,7 +105,7 @@ export function ManageUserProfessorsDialog({
                                 </div>
                             ))
                         ) : (
-                            <p className="text-sm text-muted-foreground">Nessun professore disponibile per l'assegnazione.</p>
+                            <p className="text-sm text-muted-foreground">Nessun altro professore disponibile per l'assegnazione.</p>
                         )}
                     </div>
                 </ScrollArea>
@@ -105,3 +119,4 @@ export function ManageUserProfessorsDialog({
         </Dialog>
     );
 }
+

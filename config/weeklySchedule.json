@@ -60,5 +60,67 @@
     "22:00-Aula 2 Piccola": {
       "professor": "GUEST"
     }
+  },
+  "2025-05-05": {
+    "07:00-Aula 1 Grande": {
+      "professor": "lkc.marta@gmail.com"
+    },
+    "08:00-Aula 1 Grande": {
+      "professor": "lkc.marta@gmail.com"
+    },
+    "09:00-Aula 2 Piccola": {
+      "professor": "lkc.marta@gmail.com"
+    },
+    "10:00-Aula 2 Piccola": {
+      "professor": "lkc.marta@gmail.com"
+    }
+  },
+  "2025-05-06": {
+    "11:00-Aula 1 Grande": {
+      "professor": "lkc.marta@gmail.com"
+    },
+    "12:00-Aula 2 Piccola": {
+      "professor": "lkc.marta@gmail.com"
+    }
+  },
+  "2025-05-07": {
+    "13:00-Aula 1 Grande": {
+      "professor": "lkc.marta@gmail.com"
+    },
+    "14:00-Aula 2 Piccola": {
+      "professor": "lkc.marta@gmail.com"
+    }
+  },
+  "2025-05-08": {
+    "15:00-Aula 1 Grande": {
+      "professor": "GUEST"
+    },
+    "16:00-Aula 2 Piccola": {
+      "professor": "GUEST"
+    }
+  },
+  "2025-05-09": {
+    "17:00-Aula 1 Grande": {
+      "professor": "GUEST"
+    },
+    "18:00-Aula 2 Piccola": {
+      "professor": "GUEST"
+    }
+  },
+  "2025-05-10": {
+    "19:00-Aula 1 Grande": {
+      "professor": "lkc.marta@gmail.com"
+    },
+    "20:00-Aula 2 Piccola": {
+      "professor": "lkc.marta@gmail.com"
+    }
+  },
+  "2025-05-11": {
+    "21:00-Aula 1 Grande": {
+      "professor": "GUEST"
+    },
+    "22:00-Aula 2 Piccola": {
+      "professor": "GUEST"
+    }
   }
 }
