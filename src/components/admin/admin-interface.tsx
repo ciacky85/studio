@@ -29,7 +29,7 @@ import {
 import {sendEmail} from '@/services/email';
 import {useToast} from "@/hooks/use-toast";
 import {Separator} from '@/components/ui/separator';
-import { format, parseISO, getDay, startOfWeek, addDays, subWeeks, addWeeks, isValid, isBefore, startOfDay } from 'date-fns'; // Added date-fns functions for week handling
+import { format, parseISO, getDay, startOfWeek, addDays, subWeeks, addWeeks, isValid, isBefore, startOfDay, differenceInHours } from 'date-fns'; // Added differenceInHours
 import {ManageUserProfessorsDialog} from './manage-user-professors-dialog';
 import {cn} from '@/lib/utils';
 import type {DisplayUser} from '@/types/display-user';
@@ -57,12 +57,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import {logError} from '@/services/logging';
 import { ChevronLeft, ChevronRight } from 'lucide-react'; // Icons for week navigation
+import { getCalendarLinksFromSlot } from '@/lib/calendar-utils'; // Import for email links
 
 // Constants for filenames
 const USERS_DATA_FILE = 'users';
 const AVAILABILITY_DATA_FILE = 'availability';
 const WEEKLY_SCHEDULE_DATA_FILE = 'weeklySchedule'; // New file for weekly schedule data
 const GUEST_IDENTIFIER = 'GUEST';
+const ADMIN_EMAIL = 'carlo.checchi@gmail.com'; // Define Admin email for notifications
 
 // Define available classrooms
 const classrooms = ['Aula 1 Grande', 'Aula 2 Piccola'];
@@ -183,7 +185,8 @@ export function AdminInterface() {
 
       setPendingRegistrations(loadedPending);
       setApprovedUsers(loadedApproved);
-      setProfessors(loadedProfessors.sort());
+      // Ensure GUEST_IDENTIFIER is not included in the professors list for UI selection
+      setProfessors(loadedProfessors.filter(p => p !== GUEST_IDENTIFIER).sort());
 
       // Load All Booked Slots from availability file
       const allProfessorAvailability = await readData<AllProfessorAvailability>(
@@ -199,7 +202,7 @@ export function AdminInterface() {
                 slot.date &&
                 slot.time &&
                 slot.classroom &&
-                slot.bookedBy &&
+                slot.bookedBy && // Only show booked slots
                 slot.professorEmail && // Ensure professorEmail exists
                 slot.duration === 60
               ) {
@@ -231,7 +234,7 @@ export function AdminInterface() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast]); // Added toast to dependency array
 
   // Load all data on mount
   useEffect(() => {
@@ -559,7 +562,7 @@ export function AdminInterface() {
 
       const newBooking: BookableSlot = {
         id: slotId, date: formattedDate, day: dayOfWeekString, time: time, classroom: classroom, duration: 60,
-        isAvailable: false, // Guest slots availability is implicit
+        isAvailable: false, // Guest slots availability is implicit, becomes booked
         bookedBy: `Ospite: ${guestName.trim()}`, bookingTime: new Date().toISOString(), professorEmail: GUEST_IDENTIFIER,
       };
 
@@ -579,6 +582,103 @@ export function AdminInterface() {
       setIsBookingGuest(false);
     }
   };
+
+  // --- Booking Cancellation (Admin) ---
+  const cancelBookingAdmin = useCallback(async (slotToCancel: BookableSlot) => {
+    if (!slotToCancel || !slotToCancel.id || !slotToCancel.professorEmail || !slotToCancel.bookedBy) {
+        toast({ variant: "destructive", title: "Errore", description: "Dati slot non validi per la cancellazione." });
+        return;
+    }
+
+    setIsLoading(true);
+    try {
+        // Check if booking is in the past - prevent cancellation
+        let lessonStartTime; try { lessonStartTime = parseISO(`${slotToCancel.date}T${slotToCancel.time}:00`); } catch { throw new Error("Formato data/ora slot non valido."); }
+        if (!isValid(lessonStartTime)) throw new Error("Data/ora lezione non valida.");
+        if (isBefore(lessonStartTime, new Date())) {
+             toast({ variant: "default", title: "Info", description: "Non puoi cancellare una prenotazione passata." });
+             setIsLoading(false); // Ensure loading state is reset
+             return;
+        }
+
+
+        const allAvailability = await readData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, {});
+        const targetIdentifier = slotToCancel.professorEmail; // Could be professor email or GUEST
+        const slots = allAvailability[targetIdentifier];
+
+        if (!slots) throw new Error(`Dati di disponibilità non trovati per ${targetIdentifier}.`);
+
+        const slotIndex = slots.findIndex(s => s?.id === slotToCancel.id);
+        if (slotIndex === -1) throw new Error("Slot prenotato non trovato o già cancellato.");
+
+        const originalSlot = slots[slotIndex];
+        const bookerEmailOrName = originalSlot.bookedBy; // Could be email or "Ospite: Name"
+        const professorEmail = originalSlot.professorEmail; // The actual professor or GUEST
+
+        // Update the slot: Clear booking info, make available again
+        originalSlot.bookedBy = null;
+        originalSlot.bookingTime = null;
+        originalSlot.isAvailable = true; // Make slot available again
+
+        // Save the updated availability data
+        allAvailability[targetIdentifier][slotIndex] = originalSlot;
+        await writeData<AllProfessorAvailability>(AVAILABILITY_DATA_FILE, allAvailability);
+
+        // Prepare Email Details
+        const formattedDate = format(parseISO(slotToCancel.date), 'dd/MM/yyyy', { locale: it });
+        const formattedTime = slotToCancel.time;
+        const classroomInfo = slotToCancel.classroom;
+        const professorDisplay = professorEmail === GUEST_IDENTIFIER ? 'Ospite' : `Prof. ${professorEmail}`;
+        const eventTitle = `Lezione cancellata in ${classroomInfo} con ${professorDisplay}`;
+        const { deleteLink } = getCalendarLinksFromSlot(slotToCancel.date, slotToCancel.time, slotToCancel.duration, eventTitle, eventTitle, classroomInfo);
+
+
+        // Send Notifications
+        try {
+             // Notify the booker (if it's an email, not guest)
+             if (bookerEmailOrName && !bookerEmailOrName.startsWith('Ospite: ')) {
+                await sendEmail({
+                    to: bookerEmailOrName,
+                    subject: 'Lezione Cancellata dall\'Amministratore',
+                    html: `<p>Ciao,</p><p>La tua lezione in ${classroomInfo} con ${professorDisplay} per il giorno ${formattedDate} alle ore ${formattedTime} è stata cancellata dall'amministratore.</p><p>Puoi cercare e rimuovere l'evento dal tuo calendario Google cliccando qui: <a href="${deleteLink}">Rimuovi dal Calendario</a></p>`,
+                });
+            }
+
+             // Notify the professor (if it's a professor, not GUEST)
+             if (professorEmail !== GUEST_IDENTIFIER) {
+                 await sendEmail({
+                     to: professorEmail,
+                     subject: 'Prenotazione Cancellata dall\'Amministratore',
+                     html: `<p>Ciao Prof. ${professorEmail},</p><p>La prenotazione di ${bookerEmailOrName} per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata dall'amministratore. Lo slot è di nuovo disponibile.</p>`,
+                 });
+             } else {
+                  // Notify the Admin (you) if it was a GUEST booking cancellation
+                   await sendEmail({
+                     to: ADMIN_EMAIL, // Send to admin
+                     subject: 'Prenotazione Ospite Cancellata dall\'Amministratore',
+                     html: `<p>Ciao,</p><p>La prenotazione Ospite (${bookerEmailOrName}) per il giorno ${formattedDate} alle ore ${formattedTime} in ${classroomInfo} è stata cancellata dall'amministratore. Lo slot è di nuovo disponibile.</p>`,
+                 });
+             }
+        } catch (emailError: any) {
+             console.error("Errore invio email cancellazione (admin):", emailError);
+             await logError(emailError, `Admin Cancel Booking Email (Slot: ${slotToCancel.id})`);
+             toast({ title: "Avviso", description: `Cancellazione completata, ma errore nell'invio email. Dettagli: ${emailError.message || 'Errore sconosciuto'}` });
+        }
+
+
+        toast({ title: "Prenotazione Cancellata", description: `Prenotazione ${bookerEmailOrName} per ${formattedDate} alle ${formattedTime} cancellata. Lo slot è di nuovo disponibile.` });
+        await loadData(); // Refresh booked slots list
+
+    } catch (error: any) {
+        console.error("Errore durante la cancellazione della prenotazione (admin):", error);
+        await logError(error, `Admin Cancel Booking (Slot: ${slotToCancel?.id})`);
+        toast({ variant: "destructive", title: "Errore Cancellazione", description: `Impossibile cancellare la prenotazione. ${error.message || 'Errore sconosciuto'}` });
+         await loadData(); // Refresh on error
+    } finally {
+        setIsLoading(false);
+    }
+  }, [loadData, toast]); // Added dependencies
+
 
   // --- Render Logic ---
 
@@ -872,17 +972,34 @@ export function AdminInterface() {
                      <div className="overflow-x-auto">
                        {isLoading ? ( <p>Caricamento...</p> ) : allBookedSlots.length > 0 ? (
                          <Table>
-                           <TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Ora</TableHead><TableHead>Aula</TableHead><TableHead>Professore</TableHead><TableHead>Studente/Prof./Ospite</TableHead><TableHead>Ora Prenotazione</TableHead></TableRow></TableHeader>
+                           <TableHeader>
+                             <TableRow>
+                                <TableHead>Data</TableHead>
+                                <TableHead>Ora</TableHead>
+                                <TableHead>Aula</TableHead>
+                                <TableHead>Professore</TableHead>
+                                <TableHead>Studente/Prof./Ospite</TableHead>
+                                <TableHead>Ora Prenotazione</TableHead>
+                                <TableHead>Azioni</TableHead> {/* New Header */}
+                              </TableRow>
+                           </TableHeader>
                            <TableBody>
                              {allBookedSlots.map((slot) => {
                                  if (!slot || !slot.id || !slot.date || !slot.time || !slot.bookedBy) return null; // Skip invalid slots
 
                                  let formattedDate = 'Data non valida';
                                  let formattedBookingTime = 'N/A';
+                                 let isPastBooking = false; // Flag for past bookings
+
                                  try {
                                      const parsedDate = parseISO(slot.date);
                                      if (isValid(parsedDate)) {
                                          formattedDate = format(parsedDate, 'dd/MM/yyyy', { locale: it });
+                                         // Check if the booking is in the past
+                                          const slotDateTime = parseISO(`${slot.date}T${slot.time}:00`);
+                                          if(isValid(slotDateTime)) {
+                                              isPastBooking = isBefore(slotDateTime, new Date());
+                                          }
                                      }
                                  } catch (e) { console.warn(`Invalid date format for slot ${slot.id}: ${slot.date}`); }
 
@@ -904,6 +1021,20 @@ export function AdminInterface() {
                                          <TableCell>{slot.professorEmail === GUEST_IDENTIFIER ? 'Ospite' : slot.professorEmail}</TableCell>
                                          <TableCell>{slot.bookedBy}</TableCell>
                                          <TableCell>{formattedBookingTime}</TableCell>
+                                         <TableCell>
+                                            {isPastBooking ? (
+                                                <span className="text-muted-foreground italic">Passata</span>
+                                            ) : (
+                                                <Button
+                                                    onClick={() => cancelBookingAdmin(slot)}
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    disabled={isLoading}
+                                                >
+                                                    Cancella
+                                                </Button>
+                                            )}
+                                        </TableCell>
                                      </TableRow>
                                  );
                              })}
@@ -933,4 +1064,3 @@ export function AdminInterface() {
     </>
   );
 }
-
