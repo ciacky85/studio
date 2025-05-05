@@ -1,0 +1,27 @@
+
+version: '3.8' # Specifica la versione della sintassi di Docker Compose
+
+services:
+  classroom-scheduler:
+    # Opzione 1: Costruisci l'immagine dal Dockerfile nella directory corrente
+    build: .
+    # Opzione 2: Usa un'immagine pre-costruita (es. da GitHub Container Registry)
+    # image: ghcr.io/ciacky85/studio:latest
+    container_name: classroom-scheduler-app # Nome del container
+    ports:
+      - "3000:3000" # Mappa la porta 3000 dell'host alla porta 3000 del container
+    environment:
+      # È ALTAMENTE RACCOMANDATO usare un file .env per le variabili sensibili
+      # Crea un file chiamato .env nella stessa directory di questo docker-compose.yml
+      # e inserisci le tue variabili lì, ad esempio:
+      # EMAIL_USER=tua_email@gmail.com
+      # EMAIL_PASS=tua_password_app
+      # GOOGLE_GENAI_API_KEY=la_tua_api_key
+      NODE_ENV: production # Imposta l'ambiente Node.js a production
+    # Usa un file .env per caricare le variabili d'ambiente (RACCOMANDATO)
+    env_file:
+      - .env # Cerca un file .env nella stessa directory e lo carica
+    restart: unless-stopped # Riavvia il container a meno che non venga fermato manualmente
+    volumes:
+      - ./config:/app/config # Mappa la cartella locale ./config a /app/config nel container
+

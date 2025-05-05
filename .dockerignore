@@ -1,0 +1,35 @@
+# Git files
+.git
+.gitignore
+
+# Node modules
+node_modules
+
+# Next.js build output
+.next
+
+# Environment variables
+.env*
+!.env.example
+
+# Docker files
+Dockerfile
+docker-compose.yml
+
+# VSCode specific
+.vscode
+
+# Log files
+*.log
+
+# Temp files
+*.tmp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Test files (optional)
+# coverage
+# src/**/*.test.*
+# src/**/*.spec.*
